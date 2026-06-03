@@ -1,23 +1,23 @@
-/* ── niimbot.js — driver Web Bluetooth para impressoras Niimbot ───────────────
- * Genérico e agnóstico de aplicação. Protocolo V4 (linha D11 / B1 Pro / B21 Pro),
- * obtido por engenharia reversa e validado em hardware real na B1 Pro.
+/* ── niimbot.js — Web Bluetooth driver for Niimbot printers ───────────────────
+ * Generic and application-agnostic. Protocol V4 (D11 / B1 Pro / B21 Pro line),
+ * reverse-engineered and validated on real B1 Pro hardware.
  *
- * Sem dependências, sem build. Carregue com <script src="niimbot.js"></script> e
- * use a API global `window.Niimbot`. Não toca no DOM nem busca configuração —
- * o app passa o modelo e o tamanho da etiqueta (ver registry.json).
+ * No dependencies, no build. Load with <script src="niimbot.js"></script> and
+ * use the global `window.Niimbot` API. It never touches the DOM nor fetches any
+ * config — the app passes the printer model and label size (see registry.json).
  *
  *   await Niimbot.printImage(pngUrl, { model, size, onProgress });
  *   await Niimbot.printBatch([url1, url2], { model, size, onProgress });
  *
- *   model: { name_prefixes:[], density, label_type, speed }   (de registry.json)
- *   size:  { w_px, h_px }                                      (de registry.json)
+ *   model: { name_prefixes:[], density, label_type, speed }   (from registry.json)
+ *   size:  { w_px, h_px }                                      (from registry.json)
  *
- * Requisitos: Chrome/Edge em HTTPS (ou localhost). Web Bluetooth não existe em
- * Firefox/Safari — cheque Niimbot.isSupported() antes de oferecer o recurso.
+ * Requirements: Chrome/Edge over HTTPS (or localhost). Web Bluetooth does not
+ * exist on Firefox/Safari — check Niimbot.isSupported() before offering it.
  *
- * Fluxo de impressão: connect → SetDensity → SetLabelType → PrintStart →
- *   SetPageSize → linhas (0x84 vazia / 0x85 com pixels, run-length) → 0xE3 →
- *   poll de status (0xA3→0xB3) até a página concluir → PrintEnd (0xF3).
+ * Print flow: connect → SetDensity → SetLabelType → PrintStart → SetPageSize →
+ *   rows (0x84 empty / 0x85 with pixels, run-length) → 0xE3 → status poll
+ *   (0xA3→0xB3) until the page finishes → PrintEnd (0xF3).
  */
 (function (root) {
   "use strict";
@@ -26,11 +26,11 @@
   const CHAR_UUID = "bef8d6c9-9c21-4c9e-b632-bd58c1009f9f";
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-  // Conexão reaproveitada entre impressões (singleton de módulo).
+  // Connection reused across prints (module singleton).
   let device = null;
   let characteristic = null;
-  let pending = null;        // { cmd, resolve } aguardando uma resposta
-  let lastUnsolicited = null; // última resposta não aguardada (ex.: status no poll)
+  let pending = null;        // { cmd, resolve } awaiting a response
+  let lastUnsolicited = null; // last unsolicited response (e.g. status during the poll)
 
   // ── Frame V4: [0x55,0x55,cmd,len,...data,crc,0xAA,0xAA], crc = cmd^len^data ──
   function pack(cmd, data) {
@@ -66,7 +66,7 @@
       try { await characteristic.writeValueWithoutResponse(bytes); return; }
       catch (e) { await sleep(4); }
     }
-    throw new Error("Falha ao escrever no BLE (buffer cheio?)");
+    throw new Error("Failed to write to BLE (buffer full?)");
   }
 
   function send(cmd, data) { return writeRaw(pack(cmd, data)); }
@@ -75,8 +75,8 @@
     const wait = new Promise((resolve) => { pending = { cmd: wantResp, resolve }; });
     await send(cmd, data);
     const res = await Promise.race([wait, sleep(timeoutMs).then(() => null)]);
-    if (pending && pending.cmd === wantResp) pending = null; // limpa em timeout
-    return res; // { cmd, data } ou null
+    if (pending && pending.cmd === wantResp) pending = null; // clear on timeout
+    return res; // { cmd, data } or null
   }
 
   async function getPrintStatus(timeoutMs) {
@@ -92,7 +92,7 @@
 
   async function connect(model) {
     if (characteristic && device && device.gatt.connected) return;
-    if (!navigator.bluetooth) throw new Error("Web Bluetooth indisponível (use Chrome/Edge em HTTPS).");
+    if (!navigator.bluetooth) throw new Error("Web Bluetooth unavailable (use Chrome/Edge over HTTPS).");
     const prefixes = (model && model.name_prefixes) || [];
     const filters = prefixes.length
       ? prefixes.map((p) => ({ namePrefix: p })) : [{ services: [SVC_UUID] }];
@@ -103,12 +103,12 @@
     await characteristic.startNotifications();
     characteristic.addEventListener("characteristicvaluechanged", onNotify);
     device.addEventListener("gattserverdisconnected", () => { characteristic = null; });
-    // Pacote inicial de conexão (raw, prefixo 0x03 — igual ao firmware/niimblue).
+    // Initial connection packet (raw, 0x03 prefix — same as niimblue).
     await writeRaw(new Uint8Array([0x03, 0x55, 0x55, 0xc1, 0x01, 0x01, 0xc1, 0xaa, 0xaa]));
     await sleep(200);
   }
 
-  // ── Bitmap: imagem → linhas empacotadas MSB-first (1 = preto) ───────────────
+  // ── Bitmap: image → rows packed MSB-first (1 = black) ───────────────────────
   async function imageToPacked(url, w, h) {
     const bmp = await fetch(url).then((r) => r.blob()).then((b) => createImageBitmap(b));
     const canvas = document.createElement("canvas");
@@ -139,8 +139,8 @@
     return n;
   }
 
-  // Bitmap linha-a-linha agrupando linhas idênticas (run-length), idêntico ao
-  // nimSendImage() do firmware: 0x84 (vazia) / 0x85 (com pixels).
+  // Row-by-row bitmap, grouping identical rows (run-length):
+  // 0x84 (empty) / 0x85 (with pixels).
   async function sendImage(buf, h, stride) {
     let r = 0;
     while (r < h) {
@@ -168,10 +168,10 @@
     }
   }
 
-  // ── Sequência de impressão de uma etiqueta (protocolo V4) ───────────────────
+  // ── Print sequence for one label (protocol V4) ──────────────────────────────
   async function printOnePacked(model, size, buf, stride, onProgress) {
     const W = size.w_px, H = size.h_px;
-    onProgress && onProgress("configurando…");
+    onProgress && onProgress("configuring…");
     await sendWait(0x21, [model.density], 0x31, 1000);                       // SetDensity
     await sendWait(0x23, [model.label_type], 0x33, 1000);                   // SetLabelType
     await sendWait(0x01, [0, 1, 0, 0, 0, 0, 0, model.speed, 0], 0x02, 2000); // PrintStart
@@ -182,16 +182,16 @@
       0, 1, 0, 0, 0, 0, 0, 0, 0,
     ], 0x14, 2000);                                                          // SetPageSize
 
-    onProgress && onProgress("enviando imagem…");
+    onProgress && onProgress("sending image…");
     await sendImage(buf, H, stride);
-    await sendWait(0xe3, [0x01], 0xe4, 3000);                                // PrintEnd página
+    await sendWait(0xe3, [0x01], 0xe4, 3000);                                // PrintEnd page
 
-    // Poll até a página concluir — sem isto o PrintEnd corta a etiqueta no meio.
-    onProgress && onProgress("imprimindo…");
+    // Poll until the page finishes — without this, PrintEnd cuts the label mid-print.
+    onProgress && onProgress("printing…");
     const t0 = Date.now();
     while (Date.now() - t0 < 25000) {
       const st = await getPrintStatus(900);
-      if (st) { onProgress && onProgress(`imprimindo… ${st.print}%`); if (st.page >= 1) break; }
+      if (st) { onProgress && onProgress(`printing… ${st.print}%`); if (st.page >= 1) break; }
       await sleep(250);
     }
     await sendWait(0xf3, [0x01], 0xf4, 2500);                                // PrintEnd
@@ -200,7 +200,7 @@
   async function printImage(url, opts) {
     opts = opts || {};
     const { model, size, onProgress } = opts;
-    onProgress && onProgress("conectando…");
+    onProgress && onProgress("connecting…");
     await connect(model);
     const { buf, stride } = await imageToPacked(url, size.w_px, size.h_px);
     await printOnePacked(model, size, buf, stride, onProgress);
@@ -210,10 +210,10 @@
   async function printBatch(urls, opts) {
     opts = opts || {};
     const { model, size, onProgress } = opts;
-    onProgress && onProgress("conectando…");
+    onProgress && onProgress("connecting…");
     await connect(model);
     for (let i = 0; i < urls.length; i++) {
-      const tag = `etiqueta ${i + 1}/${urls.length}`;
+      const tag = `label ${i + 1}/${urls.length}`;
       onProgress && onProgress(`${tag}…`);
       const { buf, stride } = await imageToPacked(urls[i], size.w_px, size.h_px);
       await printOnePacked(model, size, buf, stride,

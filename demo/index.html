@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="pt">
+<html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -17,17 +17,17 @@
   </style>
 </head>
 <body>
-  <h1>niimbot — demo de impressão</h1>
-  <p>Imprime uma <strong>etiqueta de teste</strong> (moldura + diagonais + texto)
-     direto do navegador via Web Bluetooth. Requer <strong>Chrome/Edge</strong>.</p>
+  <h1>niimbot — print demo</h1>
+  <p>Prints a <strong>test label</strong> (frame + diagonals + text) straight
+     from the browser via Web Bluetooth. Requires <strong>Chrome/Edge</strong>.</p>
 
   <div>
-    <label>Modelo: <select id="model"></select></label>
-    <label>Etiqueta: <select id="size"></select></label>
-    <label>Texto: <input id="text" value="NIIMBOT TEST" size="16"></label>
+    <label>Model: <select id="model"></select></label>
+    <label>Label: <select id="size"></select></label>
+    <label>Text: <input id="text" value="NIIMBOT TEST" size="16"></label>
   </div>
 
-  <button id="print">Conectar e imprimir</button>
+  <button id="print">Connect and print</button>
   <div id="status"></div>
   <canvas id="preview"></canvas>
 
@@ -38,7 +38,7 @@
     const status = (s) => { $("status").textContent = s; };
 
     if (!Niimbot.isSupported()) {
-      $("status").innerHTML = '<span class="warn">Web Bluetooth indisponível — use Chrome/Edge em HTTPS ou localhost.</span>';
+      $("status").innerHTML = '<span class="warn">Web Bluetooth unavailable — use Chrome/Edge over HTTPS or localhost.</span>';
       $("print").disabled = true;
     }
 
@@ -86,9 +86,9 @@
       $("print").disabled = true;
       try {
         await Niimbot.printImage(canvas.toDataURL("image/png"), { model, size, onProgress: status });
-        status("ok — etiqueta enviada.");
+        status("ok — label sent.");
       } catch (e) {
-        status("erro: " + (e && e.message || e));
+        status("error: " + (e && e.message || e));
       } finally {
         $("print").disabled = false;
       }

@@ -1,5 +1,5 @@
 {
-  "_comment": "Registro de modelos de impressora Niimbot e tamanhos de etiqueta. w_px = eixo do printhead (largura), h_px = eixo de avanço (comprimento).",
+  "_comment": "Registry of Niimbot printer models and label sizes. w_px = printhead axis (width), h_px = feed axis (length).",
   "models": {
     "b1pro": {
       "label": "Niimbot B1 Pro",

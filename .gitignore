@@ -5,7 +5,7 @@ Thumbs.db
 .idea/
 .vscode/
 
-# Python (caso surjam utilitários)
+# Python (in case any utilities show up)
 __pycache__/
 *.pyc
 .venv/
