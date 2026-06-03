@@ -1,0 +1,11 @@
+# OS / editor
+.DS_Store
+Thumbs.db
+*.swp
+.idea/
+.vscode/
+
+# Python (caso surjam utilitários)
+__pycache__/
+*.pyc
+.venv/

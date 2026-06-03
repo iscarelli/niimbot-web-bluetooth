@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="pt">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>niimbot — demo</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 720px; margin: 2rem auto; padding: 0 1rem; }
+    h1 { font-size: 1.4rem; }
+    label { display: inline-block; margin: .4rem .6rem .4rem 0; }
+    select, input { padding: .3rem; }
+    button { padding: .6rem 1rem; font-size: 1rem; cursor: pointer; }
+    button:disabled { opacity: .5; cursor: not-allowed; }
+    #status { margin-top: 1rem; font-family: monospace; white-space: pre-wrap; }
+    canvas { border: 1px solid #ccc; image-rendering: pixelated; max-width: 100%; margin-top: 1rem; }
+    .warn { color: #b00; }
+  </style>
+</head>
+<body>
+  <h1>niimbot — demo de impressão</h1>
+  <p>Imprime uma <strong>etiqueta de teste</strong> (moldura + diagonais + texto)
+     direto do navegador via Web Bluetooth. Requer <strong>Chrome/Edge</strong>.</p>
+
+  <div>
+    <label>Modelo: <select id="model"></select></label>
+    <label>Etiqueta: <select id="size"></select></label>
+    <label>Texto: <input id="text" value="NIIMBOT TEST" size="16"></label>
+  </div>
+
+  <button id="print">Conectar e imprimir</button>
+  <div id="status"></div>
+  <canvas id="preview"></canvas>
+
+  <script src="../src/niimbot.js"></script>
+  <script>
+  (async function () {
+    const $ = (id) => document.getElementById(id);
+    const status = (s) => { $("status").textContent = s; };
+
+    if (!Niimbot.isSupported()) {
+      $("status").innerHTML = '<span class="warn">Web Bluetooth indisponível — use Chrome/Edge em HTTPS ou localhost.</span>';
+      $("print").disabled = true;
+    }
+
+    const reg = await fetch("../registry.json").then((r) => r.json());
+    for (const [k, m] of Object.entries(reg.models)) {
+      const o = new Option(m.label, k, k === reg.default_model, k === reg.default_model);
+      $("model").add(o);
+    }
+    for (const [k, s] of Object.entries(reg.sizes)) {
+      const o = new Option(s.label, k, k === reg.default_size, k === reg.default_size);
+      $("size").add(o);
+    }
+
+    function drawTest(size, text) {
+      const c = $("preview");
+      c.width = size.w_px; c.height = size.h_px;
+      const x = c.getContext("2d");
+      x.fillStyle = "#fff"; x.fillRect(0, 0, c.width, c.height);
+      x.strokeStyle = "#000"; x.lineWidth = 3;
+      const m = size.margin || 10;
+      x.strokeRect(m, m, c.width - 2 * m, c.height - 2 * m);
+      x.beginPath();
+      x.moveTo(m, m); x.lineTo(c.width - m, c.height - m);
+      x.moveTo(c.width - m, m); x.lineTo(m, c.height - m);
+      x.stroke();
+      x.fillStyle = "#000";
+      x.font = `bold ${Math.round(size.h_px * 0.16)}px sans-serif`;
+      x.textAlign = "center"; x.textBaseline = "middle";
+      x.fillText(text, c.width / 2, c.height / 2);
+      return c;
+    }
+
+    function refresh() {
+      const size = reg.sizes[$("size").value];
+      drawTest(size, $("text").value);
+    }
+    $("size").addEventListener("change", refresh);
+    $("text").addEventListener("input", refresh);
+    refresh();
+
+    $("print").addEventListener("click", async () => {
+      const model = reg.models[$("model").value];
+      const size = reg.sizes[$("size").value];
+      const canvas = drawTest(size, $("text").value);
+      $("print").disabled = true;
+      try {
+        await Niimbot.printImage(canvas.toDataURL("image/png"), { model, size, onProgress: status });
+        status("ok — etiqueta enviada.");
+      } catch (e) {
+        status("erro: " + (e && e.message || e));
+      } finally {
+        $("print").disabled = false;
+      }
+    });
+  })();
+  </script>
+</body>
+</html>
