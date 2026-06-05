@@ -28,6 +28,9 @@
   </div>
 
   <button id="print">Connect and print</button>
+  <button id="print3">Print 3-label batch</button>
+  <button id="print3dense">Print 3 dense labels (stress)</button>
+  <button id="print5dense">Print 5 dense labels (stress)</button>
   <div id="status"></div>
   <canvas id="preview"></canvas>
 
@@ -52,8 +55,8 @@
       $("size").add(o);
     }
 
-    function drawTest(size, text) {
-      const c = $("preview");
+    function drawTest(size, text, target) {
+      const c = target || $("preview");
       c.width = size.w_px; c.height = size.h_px;
       const x = c.getContext("2d");
       x.fillStyle = "#fff"; x.fillRect(0, 0, c.width, c.height);
@@ -68,6 +71,30 @@
       x.font = `bold ${Math.round(size.h_px * 0.16)}px sans-serif`;
       x.textAlign = "center"; x.textBaseline = "middle";
       x.fillText(text, c.width / 2, c.height / 2);
+      return c;
+    }
+
+    // Worst case for the driver: random 1px noise makes every row a unique 0x85
+    // row (no run-length savings) with ~half its bytes set — maximum data volume
+    // and maximum bytes buffered ahead. A big readable number stays on top so you
+    // can still confirm order and that the label printed intact.
+    function drawDense(size, label, target) {
+      const c = target || $("preview");
+      c.width = size.w_px; c.height = size.h_px;
+      const x = c.getContext("2d");
+      const img = x.createImageData(c.width, c.height);
+      const d = img.data;
+      for (let i = 0; i < d.length; i += 4) {
+        const v = Math.random() < 0.5 ? 0 : 255;
+        d[i] = d[i + 1] = d[i + 2] = v; d[i + 3] = 255;
+      }
+      x.putImageData(img, 0, 0);
+      // White plate + black number so it survives the noise and stays legible.
+      const fs = Math.round(size.h_px * 0.5);
+      x.fillStyle = "#fff"; x.fillRect(0, 0, c.width, c.height * 0.55);
+      x.fillStyle = "#000"; x.font = `bold ${fs}px sans-serif`;
+      x.textAlign = "center"; x.textBaseline = "middle";
+      x.fillText(label, c.width / 2, c.height * 0.28);
       return c;
     }
 
@@ -93,6 +120,55 @@
         $("print").disabled = false;
       }
     });
+
+    $("print3").addEventListener("click", async () => {
+      const model = reg.models[$("model").value];
+      const size = reg.sizes[$("size").value];
+      // 3 distinct labels so the print order — and the absence of a retract
+      // between them — is obvious on the paper.
+      const off = document.createElement("canvas");
+      const urls = [1, 2, 3].map((n) => {
+        drawTest(size, `${$("text").value} #${n}`, off);
+        return off.toDataURL("image/png");
+      });
+      $("print").disabled = true; $("print3").disabled = true;
+      try {
+        await Niimbot.printBatch(urls, { model, size, onProgress: status });
+        status("ok — 3-label batch sent.");
+      } catch (e) {
+        status("error: " + (e && e.message || e));
+      } finally {
+        $("print").disabled = false; $("print3").disabled = false;
+        refresh();
+      }
+    });
+
+    // Worst-case stress: `count` dense noise labels at the selected size. Pick your
+    // LARGEST label here to push the most data through the look-ahead pipeline.
+    async function runDense(count) {
+      const model = reg.models[$("model").value];
+      const size = reg.sizes[$("size").value];
+      const off = document.createElement("canvas");
+      const urls = [];
+      for (let n = 1; n <= count; n++) {
+        drawDense(size, String(n), off);
+        urls.push(off.toDataURL("image/png"));
+      }
+      const btns = ["print", "print3", "print3dense", "print5dense"];
+      btns.forEach((b) => ($(b).disabled = true));
+      try {
+        await Niimbot.printBatch(urls, { model, size, onProgress: status });
+        status(`ok — ${count} dense labels sent.`);
+      } catch (e) {
+        status("error: " + (e && e.message || e));
+      } finally {
+        btns.forEach((b) => ($(b).disabled = false));
+        refresh();
+      }
+    }
+
+    $("print3dense").addEventListener("click", () => runDense(3));
+    $("print5dense").addEventListener("click", () => runDense(5));
   })();
   </script>
 </body>

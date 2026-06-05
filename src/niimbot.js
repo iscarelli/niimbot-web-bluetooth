@@ -15,9 +15,16 @@
  * Requirements: Chrome/Edge over HTTPS (or localhost). Web Bluetooth does not
  * exist on Firefox/Safari — check Niimbot.isSupported() before offering it.
  *
- * Print flow: connect → SetDensity → SetLabelType → PrintStart → SetPageSize →
- *   rows (0x84 empty / 0x85 with pixels, run-length) → 0xE3 → status poll
- *   (0xA3→0xB3) until the page finishes → PrintEnd (0xF3).
+ * Print flow (one job, N pages): connect → SetDensity → SetLabelType →
+ *   PrintStart (declares N pages) → for each page: SetPageSize → rows
+ *   (0x84 empty / 0x85 with pixels, run-length) → PageEnd (0xE3) → … →
+ *   PrintEnd (0xF3) once at the end.
+ *
+ *   PrintEnd (0xF3) is what feeds out + retracts the paper, so it runs exactly
+ *   once per job, not per page — otherwise the printer stops and pulls the paper
+ *   back between every label. Pages are pipelined with a 1-page look-ahead (the
+ *   next page is queued while the current one prints, throttled via the 0xA3→0xB3
+ *   status counter) so a batch streams continuously with no stop between labels.
  */
 (function (root) {
   "use strict";
@@ -168,33 +175,54 @@
     }
   }
 
-  // ── Print sequence for one label (protocol V4) ──────────────────────────────
-  async function printOnePacked(model, size, buf, stride, onProgress) {
-    const W = size.w_px, H = size.h_px;
+  // ── Job lifecycle (protocol V4) ─────────────────────────────────────────────
+  // A "job" wraps one or more pages: PrintStart … (page)* … PrintEnd. The closing
+  // PrintEnd (0xF3) is what makes the printer feed out + RETRACT the paper, so it
+  // must run exactly once at the end — never between labels. Opening one job per
+  // label (the old printOnePacked) caused a stop/retract between every label; the
+  // Niimbot app keeps a single job open and streams pages back-to-back.
+
+  // PrintStart declares the total page count up front (16-bit, big-endian at
+  // bytes [0..1]); each page then declares its own copy count of 1 in SetPageSize.
+  async function beginJob(model, totalPages, onProgress) {
     onProgress && onProgress("configuring…");
     await sendWait(0x21, [model.density], 0x31, 1000);                       // SetDensity
     await sendWait(0x23, [model.label_type], 0x33, 1000);                   // SetLabelType
-    await sendWait(0x01, [0, 1, 0, 0, 0, 0, 0, model.speed, 0], 0x02, 2000); // PrintStart
+    const n = Math.max(1, totalPages | 0);
+    await sendWait(0x01,
+      [(n >> 8) & 0xff, n & 0xff, 0, 0, 0, 0, 0, model.speed, 0], 0x02, 2000); // PrintStart
+  }
 
+  // Queue one page's data within an open job — does NOT wait for it to print, so
+  // the next page can be sent while this one is still printing (keeps the printer
+  // buffer primed → no stop between labels).
+  async function sendPagePacked(size, buf, stride, onProgress) {
+    const W = size.w_px, H = size.h_px;
     await send(0xa3, [0x01]); await sleep(30);                               // PrintStatus (one-way)
     await sendWait(0x13, [
       (H >> 8) & 0xff, H & 0xff, (W >> 8) & 0xff, W & 0xff,
       0, 1, 0, 0, 0, 0, 0, 0, 0,
-    ], 0x14, 2000);                                                          // SetPageSize
+    ], 0x14, 2000);                                                          // SetPageSize (1 copy)
 
     onProgress && onProgress("sending image…");
     await sendImage(buf, H, stride);
-    await sendWait(0xe3, [0x01], 0xe4, 3000);                                // PrintEnd page
+    await sendWait(0xe3, [0x01], 0xe4, 3000);                                // PageEnd (0xE3)
+  }
 
-    // Poll until the page finishes — without this, PrintEnd cuts the label mid-print.
+  // Poll until the cumulative printed-page counter (0xB3) reaches `target`.
+  // Used both to throttle the look-ahead and to drain at end of job.
+  async function waitPage(target, onProgress) {
     onProgress && onProgress("printing…");
     const t0 = Date.now();
     while (Date.now() - t0 < 25000) {
       const st = await getPrintStatus(900);
-      if (st) { onProgress && onProgress(`printing… ${st.print}%`); if (st.page >= 1) break; }
-      await sleep(250);
+      if (st) { onProgress && onProgress(`printing… ${st.print}%`); if (st.page >= target) return; }
+      await sleep(150);
     }
-    await sendWait(0xf3, [0x01], 0xf4, 2500);                                // PrintEnd
+  }
+
+  async function endJob() {
+    await sendWait(0xf3, [0x01], 0xf4, 2500);                                // PrintEnd (0xF3)
   }
 
   async function printImage(url, opts) {
@@ -203,22 +231,42 @@
     onProgress && onProgress("connecting…");
     await connect(model);
     const { buf, stride } = await imageToPacked(url, size.w_px, size.h_px);
-    await printOnePacked(model, size, buf, stride, onProgress);
+    await beginJob(model, 1, onProgress);
+    await sendPagePacked(size, buf, stride, onProgress);
+    await waitPage(1, onProgress);
+    await endJob();
     onProgress && onProgress("ok");
   }
+
+  // Keep at most this many pages buffered ahead of what has actually printed.
+  // A page's send time is significant vs. its print time, so 1 page of head start
+  // isn't enough — the next send loses the race and stalls. 2 gives each send a
+  // full extra page of print-time to land, while a long batch still can't overrun
+  // the printer's line buffer.
+  const LOOKAHEAD = 2;
 
   async function printBatch(urls, opts) {
     opts = opts || {};
     const { model, size, onProgress } = opts;
     onProgress && onProgress("connecting…");
     await connect(model);
-    for (let i = 0; i < urls.length; i++) {
-      const tag = `label ${i + 1}/${urls.length}`;
-      onProgress && onProgress(`${tag}…`);
+    const N = urls.length;
+    // Single job for the whole batch: pages stream back-to-back, no retract between.
+    await beginJob(model, N, onProgress);
+    for (let i = 0; i < N; i++) {
+      const tag = `label ${i + 1}/${N}`;
+      onProgress && onProgress(`${tag}: sending…`);
       const { buf, stride } = await imageToPacked(urls[i], size.w_px, size.h_px);
-      await printOnePacked(model, size, buf, stride,
+      await sendPagePacked(size, buf, stride,
         (s) => onProgress && onProgress(`${tag}: ${s}`));
+      // Send page i, THEN wait for page i-LOOKAHEAD to finish — so the just-sent
+      // page is already buffered before the printer needs it (no inter-label stop).
+      if (i - LOOKAHEAD >= 0) {
+        await waitPage(i - LOOKAHEAD + 1, (s) => onProgress && onProgress(`${tag}: ${s}`));
+      }
     }
+    await waitPage(N, onProgress);                                          // drain remaining pages
+    await endJob();
     onProgress && onProgress("ok");
   }
 
