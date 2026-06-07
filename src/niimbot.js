@@ -31,7 +31,7 @@
 (function (root) {
   "use strict";
 
-  const VERSION = "1.3.3";   // shown in the demo/console; bump on each release (or dev change)
+  const VERSION = "1.3.4-rc1";   // shown in the demo/console; bump on each release (or dev change)
   const SVC_UUID = "e7810a71-73ae-499d-8c15-faa9aef0c3f2";
   const CHAR_UUID = "bef8d6c9-9c21-4c9e-b632-bd58c1009f9f";
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -95,13 +95,18 @@
     }
   }
 
-  // Flow control. The protocol-3 B1 silently drops rows under an unacked burst,
-  // leaving the page incomplete (PageEnd never acks). "acked" (write-with-response)
-  // gives per-packet ack + ordered delivery; "paced" falls back to unacked writes
-  // with a short gap when the characteristic has no write property. The B1 Pro line
-  // tolerates the fastest unacked writes, so it stays on "fast".
+  // Flow control. Unacked writes (writeValueWithoutResponse) can be dropped under a
+  // burst, leaving the page incomplete — on the B1 the page stalls; on macOS the page
+  // comes out BLANK yet reports 100% (CoreBluetooth silently drops the burst that
+  // Windows tolerates). "acked" = write-with-response (ordered, slow); "paced" = unacked
+  // + a short gap; "fast" = unacked, no gap. The B1 Pro / M2-H take "fast" on Windows,
+  // but on macOS every model is paced (see IS_MAC below) so rows aren't dropped.
+  const IS_MAC = (() => {
+    try { if (navigator.userAgentData && navigator.userAgentData.platform) return navigator.userAgentData.platform === "macOS"; } catch (e) {}
+    return /Mac/i.test((navigator.platform || "") + " " + (navigator.userAgent || ""));
+  })();
   let writeMode = "fast";   // "fast" | "acked" | "paced"
-  const PACE_MS = 10;       // gap between unacked B1 writes so rows aren't dropped mid-page (niimbluelib's value)
+  let PACE_MS = 10;         // gap (ms) between unacked writes so rows aren't dropped; runtime-tunable via Niimbot.PACE_MS
   async function writeRaw(bytes) {
     if (writeMode === "acked") { await characteristic.writeValueWithResponse(bytes); return; }
     // writeValueWithoutResponse pode estourar o buffer BLE em rajada — retry curto.
@@ -271,7 +276,8 @@
     const needsPacing = meta ? !!meta.paced : (task === "b1");
     writeMode = needsPacing ? (props.writeWithoutResponse ? "paced" : "acked") : "fast";
     _bundleAllowed = !!(meta && meta.bundle);   // only bundle frames where validated (B1, M2-H)
-    logMsg(`writeMode=${writeMode} bundle=${_bundleAllowed} (task=${task || "?"}, model=${(meta && meta.label) || "?"}, write=${!!props.write}, writeNoResp=${!!props.writeWithoutResponse})`);
+    if (IS_MAC && writeMode === "fast") writeMode = "paced";   // macOS drops unacked bursts → pace the "fast" models too
+    logMsg(`writeMode=${writeMode} bundle=${_bundleAllowed} mac=${IS_MAC} pace=${PACE_MS} (task=${task || "?"}, model=${(meta && meta.label) || "?"}, write=${!!props.write}, writeNoResp=${!!props.writeWithoutResponse})`);
     if (task === "b1") await b1Handshake();
   }
 
@@ -511,6 +517,7 @@
     VERSION, SVC_UUID, CHAR_UUID,
     get DEBUG() { return DEBUG; }, set DEBUG(v) { DEBUG = !!v; },
     get BUNDLE_MAX() { return BUNDLE_MAX; }, set BUNDLE_MAX(v) { BUNDLE_MAX = Math.max(0, v | 0); },
+    get PACE_MS() { return PACE_MS; }, set PACE_MS(v) { PACE_MS = Math.max(0, v | 0); },
     get printer() { return printerInfo; },   // { modelId, protocolVersion, label, task, dpi } after connect
     isSupported: () => !!navigator.bluetooth,
     // Connect and identify the printer (model id + protocol) without printing — the
