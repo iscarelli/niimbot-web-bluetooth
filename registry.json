@@ -1,5 +1,5 @@
 {
-  "_comment": "Registry of Niimbot printer models and label sizes. w_px = printhead axis (width), h_px = feed axis (length). `task` selects the print-task variant in niimbot.js: \"v4\" (D110M/B1 Pro/B21 Pro) or \"b1\" (B1/B21/M2-H) — task is the protocol sequence, independent of dpi (B1 is 203 dpi, M2-H is 300 dpi, both task \"b1\"). `dpi` pairs a size with its model(s). `id` = printer model id for auto-detection. Entries marked `_untested` are derived from niimbluelib but not validated on hardware.",
+  "_comment": "Registry of Niimbot printer models and label sizes. w_px = printhead axis (width), h_px = feed axis (length). `task` selects the print-task variant in niimbot.js: \"v4\" (D110M/B1 Pro/B21 Pro) or \"b1\" (B1/B21/M2-H) — task is the protocol sequence, independent of dpi (B1 is 203 dpi, M2-H is 300 dpi, both task \"b1\"). `dpi` pairs a size with its model(s). `id` = printer model id for auto-detection. All models/sizes here are validated on real hardware; `_note` fields just document how a size's pixels were derived.",
   "models": {
     "b1pro": {
       "label": "Niimbot B1 Pro",
@@ -59,7 +59,7 @@
       "dpi": 203
     },
     "T50x30_m2h": {
-      "_untested": "M2-H 50×30 @ 300 dpi. w_px = printhead width (567 ≈ 48 mm, so a 50 mm label keeps a ~2 mm right margin, like the B1); h_px = 30 mm × 11.81. Verify on hardware.",
+      "_note": "M2-H 50×30 @ 300 dpi. w_px = printhead width (567 ≈ 48 mm, so a 50 mm label keeps a ~2 mm right margin, like the B1); h_px = 30 mm × 11.81.",
       "label": "50 × 30 mm (M2-H)",
       "code": "T50*30",
       "w_mm": 50,
