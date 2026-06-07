@@ -1,7 +1,7 @@
 # Continuation notes — Niimbot B1 work
 
 > Working copy of the session memory, kept in-repo so it travels across machines.
-> Merged to **main**; latest release **v1.3.0** (adds M2-H + auto-identification).
+> Merged to **main**; latest release **v1.3.1** (M2-H + auto-identification; 1.3.1 drops a stale registry `_untested`).
 > **M2-H validated** (id 4608, 300 dpi, b1 task + fast writes). The only residual
 > slowness is a full random-noise page at 300 dpi (BLE throughput, MTU ≈ 247 → ~2
 > frames/write) — not a real-label case. v4 sequence was tested on M2-H, no better.
