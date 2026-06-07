@@ -1,7 +1,11 @@
 # Continuation notes — Niimbot B1 work
 
 > Working copy of the session memory, kept in-repo so it travels across machines.
-> Merged to **main** and released as **v1.2.0**.
+> Merged to **main**; latest release **v1.3.0** (adds M2-H + auto-identification).
+> **M2-H validated** (id 4608, 300 dpi, b1 task + fast writes). The only residual
+> slowness is a full random-noise page at 300 dpi (BLE throughput, MTU ≈ 247 → ~2
+> frames/write) — not a real-label case. v4 sequence was tested on M2-H, no better.
+> Still pending (Vikunja #56): D110, D11_H.
 
 ## Status (2026-06-07) — B1 complete, validated on real hardware
 

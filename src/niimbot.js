@@ -31,7 +31,7 @@
 (function (root) {
   "use strict";
 
-  const VERSION = "1.2.0";   // shown in the demo/console; bump on each release (or dev change)
+  const VERSION = "1.3.0";   // shown in the demo/console; bump on each release (or dev change)
   const SVC_UUID = "e7810a71-73ae-499d-8c15-faa9aef0c3f2";
   const CHAR_UUID = "bef8d6c9-9c21-4c9e-b632-bd58c1009f9f";
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -175,11 +175,14 @@
   // [11]*100+[12]), then picks the print task from that. We do the same to validate
   // the caller's selection. Validated ids: B1 (4096), B1 Pro (4097); the B1 SE (4098)
   // shares the b1 task. Other models exist but are untested → reported, not enforced.
+  // `paced` = needs the ~10 ms gap between unacked row writes (the 203 dpi B1 drops
+  // rows on a full-speed burst). The 300 dpi B1-Pro-class units (B1 Pro, M2-H) take
+  // the unpaced "fast" burst, so flow control is per-MODEL, not per-task.
   const MODEL_IDS = {
-    4096: { label: "Niimbot B1",     task: "b1", dpi: 203, printhead: 384 },
-    4097: { label: "Niimbot B1 Pro", task: "v4", dpi: 300, printhead: 567 },
-    4098: { label: "Niimbot B1 SE",  task: "b1", dpi: 203, printhead: 384 },
-    4608: { label: "Niimbot M2-H",   task: "b1", dpi: 300, printhead: 567 },   // untested — same b1 task as B1, 300 dpi
+    4096: { label: "Niimbot B1",     task: "b1", dpi: 203, printhead: 384, paced: true },
+    4097: { label: "Niimbot B1 Pro", task: "v4", dpi: 300, printhead: 567, paced: false },
+    4098: { label: "Niimbot B1 SE",  task: "b1", dpi: 203, printhead: 384, paced: true },
+    4608: { label: "Niimbot M2-H",   task: "b1", dpi: 300, printhead: 567, paced: false },  // B1-Pro-class: b1 command sequence (per niimbluelib; v4 tested no better) + fast writes
   };
   let printerInfo = null;   // { modelId, protocolVersion, label, task, dpi } after connect
 
@@ -198,11 +201,12 @@
     const meta = (modelId != null && MODEL_IDS[modelId]) || null;
     printerInfo = {
       modelId, protocolVersion,
+      deviceName: (device && device.name) || null,   // advertised BLE name (for filtering)
       label: meta ? meta.label : (modelId != null ? `unknown (id ${modelId})` : "unknown"),
       task: meta ? meta.task : null,
       dpi: meta ? meta.dpi : null,
     };
-    logMsg(`identified ${printerInfo.label} (id=${modelId}, proto=${protocolVersion}, task=${printerInfo.task || "?"})`);
+    logMsg(`identified ${printerInfo.label} (id=${modelId}, proto=${protocolVersion}, task=${printerInfo.task || "?"}, name="${printerInfo.deviceName || "?"}")`);
     return printerInfo;
   }
 
@@ -224,9 +228,13 @@
     logMsg(`Niimbot ${VERSION} — connecting (task=${(model && model.task) || "?"})`);
     if (!navigator.bluetooth) throw new Error("Web Bluetooth unavailable (use Chrome/Edge over HTTPS).");
     const prefixes = (model && model.name_prefixes) || [];
+    // Filter the chooser by advertised-name prefix (known per model). Empty → fall
+    // back to the service UUID. (acceptAllDevices was only for first-time discovery
+    // of an unknown model; we know the names now, so keep the chooser clean.)
     const filters = prefixes.length
       ? prefixes.map((p) => ({ namePrefix: p })) : [{ services: [SVC_UUID] }];
     device = await navigator.bluetooth.requestDevice({ filters, optionalServices: [SVC_UUID] });
+    logMsg(`device name: "${device.name || "?"}"`);
     const server = await device.gatt.connect();
     const svc = await server.getPrimaryService(SVC_UUID);
     characteristic = await svc.getCharacteristic(CHAR_UUID);
@@ -243,9 +251,16 @@
     // Flow control + arming follow the ACTUAL printer (detected), falling back to the
     // caller's pick when unidentified — so an identify-then-print flow (or a wrong
     // pick) still paces and arms a real B1 correctly.
-    const task = (printerInfo && printerInfo.task) || (model && model.task);
-    writeMode = (task === "b1") ? (props.write ? "acked" : "paced") : "fast";
-    logMsg(`writeMode=${writeMode} (task=${task || "?"})`);
+    const meta = (printerInfo && printerInfo.modelId != null) ? MODEL_IDS[printerInfo.modelId] : null;
+    const task = (meta && meta.task) || (printerInfo && printerInfo.task) || (model && model.task);
+    // Flow control is per-MODEL, not per-task. Only the 203 dpi B1 drops rows on a
+    // full-speed burst, so it paces; the B1 Pro and B1-Pro-class M2-H take the unpaced
+    // "fast" burst (writeNoResponse, no gap) — same as the B1 Pro path. When the model
+    // is unknown, default a b1-task printer to paced (safe) and never use slow acked
+    // writes unless writeNoResponse is unavailable.
+    const needsPacing = meta ? !!meta.paced : (task === "b1");
+    writeMode = needsPacing ? (props.writeWithoutResponse ? "paced" : "acked") : "fast";
+    logMsg(`writeMode=${writeMode} (task=${task || "?"}, model=${(meta && meta.label) || "?"}, write=${!!props.write}, writeNoResp=${!!props.writeWithoutResponse})`);
     if (task === "b1") await b1Handshake();
   }
 
@@ -428,9 +443,13 @@
     assertSelection(model, size);
     const offsetY = opts.offsetY != null ? opts.offsetY : (size.offset_y_px || 0);
     const { buf, stride } = await imageToPacked(url, size.w_px, size.h_px, offsetY);
+    _t0 = Date.now(); _lastPage = -1;                                        // timing trace (DEBUG)
     await beginJob(model, copies, onProgress);
+    tlog(`job started (${copies} cop${copies > 1 ? "ies" : "y"}, ${size.w_px}×${size.h_px}, stride ${stride})`);
     await sendPagePacked(model, size, buf, stride, copies, onProgress);
+    tlog(`image buffered (PageEnd acked)`);
     await finishJob(model, copies, onProgress);
+    tlog(`done (PrintEnd acked)`);
     onProgress && onProgress("ok");
   }
 

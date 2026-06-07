@@ -142,18 +142,22 @@
     $("identify").addEventListener("click", async () => {
       $("identify").disabled = true;
       try {
-        status("connecting…");
-        // name_prefixes is shared across B1 models, so any model works as the filter.
-        const info = await Niimbot.identify(reg.models[$("model").value]);
+        status("connecting… (pick your printer from the chooser)");
+        // Filter the chooser to the union of all known model name prefixes, so it
+        // lists only Niimbot printers we recognise but still finds any of them.
+        const sel = reg.models[$("model").value];
+        const allPrefixes = [...new Set(Object.values(reg.models).flatMap((m) => m.name_prefixes || []))];
+        const info = await Niimbot.identify({ ...sel, name_prefixes: allPrefixes });
         let matched = null;
         for (const [k, m] of Object.entries(reg.models)) if (m.id === info.modelId) matched = k;
+        const detail = `id ${info.modelId}, protocol v${info.protocolVersion}, BLE name "${info.deviceName || "?"}"`;
         if (matched) {
           $("model").value = matched;
           populateSizes();
           refresh();
-          status(`Identified: ${info.label} — id ${info.modelId}, protocol v${info.protocolVersion}. Model "${matched}" selected.`);
+          status(`Identified: ${info.label} — ${detail}. Model "${matched}" selected.`);
         } else {
-          status(`Identified: ${info.label} (id ${info.modelId}, protocol v${info.protocolVersion}). No matching model in registry — selection left as is.`);
+          status(`Identified: ${info.label} — ${detail}. No matching model in registry — selection left as is.`);
         }
       } catch (e) {
         status("error: " + (e && e.message || e));

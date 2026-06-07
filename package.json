@@ -1,0 +1,45 @@
+{
+  "name": "niimbot-web-bluetooth",
+  "version": "1.3.0",
+  "description": "Zero-dependency Web Bluetooth driver + reverse-engineered protocol docs to print Niimbot label printers straight from the browser — no app. Validated on B1, B1 Pro and M2-H.",
+  "main": "src/niimbot.js",
+  "type": "commonjs",
+  "files": [
+    "src/",
+    "registry.json",
+    "docs/",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "demo": "node demo/serve.mjs"
+  },
+  "keywords": [
+    "niimbot",
+    "niimbot-b1",
+    "niimbot-b1-pro",
+    "niimbot-m2h",
+    "web-bluetooth",
+    "bluetooth",
+    "ble",
+    "bluetooth-low-energy",
+    "gatt",
+    "label-printer",
+    "label-printing",
+    "thermal-printer",
+    "printing",
+    "browser",
+    "reverse-engineering",
+    "zero-dependency"
+  ],
+  "homepage": "https://github.com/iscarelli/niimbot-web-bluetooth#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/iscarelli/niimbot-web-bluetooth.git"
+  },
+  "bugs": {
+    "url": "https://github.com/iscarelli/niimbot-web-bluetooth/issues"
+  },
+  "author": "Dimitri Carelli <iscarelli@gmail.com>",
+  "license": "MIT"
+}

@@ -5,9 +5,9 @@ Reverse-engineered and validated in the lab on the **Niimbot B1 Pro** and the
 (D110_M / D11_H / B1 Pro / B21 Pro, 300 dpi) and `b1` (B1 / B21 / D11, **protocol
 version 3**, 203 dpi). See [Print task variants](#print-task-variants-v4-vs-b1).
 
-> **Validated:** only the **B1 Pro** (`v4`) and **B1** (`b1`) are tested on real
-> hardware. The other models listed per family share the protocol and should work,
-> but are **untested** — treat their parameters as a starting point.
+> **Validated:** the **B1** (`b1`), **B1 Pro** (`v4`) and **M2-H** (`b1`, 300 dpi) are
+> tested on real hardware. The other models listed per family share the protocol and
+> should work, but are **untested** — treat their parameters as a starting point.
 
 ## Transport (Web Bluetooth / BLE GATT)
 
@@ -151,15 +151,25 @@ PrinterStatusData(0xA5,[1]) -> 0xB5   # protocol version = data[11]*100 + data[1
 PrinterInfo(0x40,[08])      -> 0x48   # model id, big-endian u16 (1-byte resp → byte<<8)
 ```
 
-| Model id | dec | Model | Protocol | task | dpi | printhead px |
-|---|---|---|---|---|---|---|
-| `0x1000` | 4096 | **B1** | 3 | `b1` | 203 | 384 |
-| `0x1001` | 4097 | **B1 Pro** | 5 | `v4` | 300 | 567 |
-| `0x1002` | 4098 | B1 SE | 3 | `b1` | 203 | 384 |
+| Model id | dec | Model | Protocol | task | dpi | printhead px | Status |
+|---|---|---|---|---|---|---|---|
+| `0x1000` | 4096 | **B1** | 3 | `b1` | 203 | 384 | ✅ validated |
+| `0x1001` | 4097 | **B1 Pro** | 5 | `v4` | 300 | 567 | ✅ validated |
+| `0x1200` | 4608 | **M2-H** | 4 | `b1` | 300 | 567 | ✅ validated |
+| `0x1002` | 4098 | B1 SE | 3 | `b1` | 203 | 384 | untested |
 
-(Model ids match niimbluelib's table; only B1 and B1 Pro are validated here.) The
-driver runs this on `connect()`, exposes it as `Niimbot.printer`, and refuses to print
-when the selected `task`/`dpi` doesn't match the connected printer.
+(Model ids match niimbluelib's table.) The driver runs this on `connect()`, exposes it
+as `Niimbot.printer`, and refuses to print when the selected `task`/`dpi` doesn't match
+the connected printer. **Flow control is per-model, not per-task:** the 203 dpi B1
+drops rows on a full-speed burst so it paces writes (~10 ms gap); the 300 dpi B1 Pro
+and M2-H take the unpaced "fast" burst. The M2-H also accepts the `v4` command
+sequence, but `b1` (per niimbluelib) is used — `v4` gave no better cadence.
+
+> **Worst-case note:** a *full random-noise* page (every row unique, ~50 % black) at
+> 300 dpi sends slower than it prints over BLE (≈12 ms per write, MTU ≈ 247 → ~2 frames
+> per write), so the printer can briefly wait between such labels. Real labels (text,
+> codes, logos — mostly white) run-length-collapse and stream continuously; for N
+> identical labels, `copies` uploads once and never stalls.
 
 ## Label geometry
 

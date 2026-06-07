@@ -24,8 +24,8 @@
       "name_prefixes": ["B1"]
     },
     "m2h": {
-      "_untested": "Niimbot M2-H — same b1 print task as the B1 but 300 dpi (printhead 567 px). Derived from niimbluelib (model id 4608). NOT validated on hardware: confirm the BLE name prefix (guessed 'M2'; if it doesn't appear in the chooser, clear name_prefixes to list all Niimbot devices) and the real label pixel sizes.",
-      "label": "Niimbot M2-H (untested)",
+      "_note": "Niimbot M2-H — 300 dpi (printhead 567 px), model id 4608, protocol v4, advertised name e.g. 'M2_H-H107060027'. Validated on hardware: identifies and prints. Uses the b1 command sequence (per niimbluelib) with fast unacked writes (B1-Pro-class). The v4 sequence was tested too — it also prints but gives no better distinct-label cadence, so we keep b1. The small pause between distinct labels at 300 dpi is mechanical; for identical labels use copies (continuous).",
+      "label": "Niimbot M2-H",
       "id": 4608,
       "dpi": 300,
       "protocol": "v4",

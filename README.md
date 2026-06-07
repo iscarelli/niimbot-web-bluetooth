@@ -1,13 +1,24 @@
 # niimbot-web-bluetooth
 
-**Web Bluetooth** driver and protocol documentation for **Niimbot** label
-printers — print straight from the browser, with no intermediary app.
+[![Live demo](https://img.shields.io/badge/live-demo-2ea44f)](https://iscarelli.github.io/niimbot-web-bluetooth/demo/)
+[![Release](https://img.shields.io/github/v/release/iscarelli/niimbot-web-bluetooth)](https://github.com/iscarelli/niimbot-web-bluetooth/releases)
+[![npm](https://img.shields.io/npm/v/niimbot-web-bluetooth)](https://www.npmjs.com/package/niimbot-web-bluetooth)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
+![Dependencies: none](https://img.shields.io/badge/dependencies-none-brightgreen)
 
-Reverse-engineered and validated on real hardware (**Niimbot B1 Pro** and
-**Niimbot B1**). Two print-task variants over the same frame cover the
-**B1 Pro / B21 Pro / D11** line (300 dpi, `v4`) and the **B1 / B21** line
-(203 dpi, protocol-3 `b1`) — selected per model via the `task` field in
-`registry.json`.
+**Web Bluetooth** driver and protocol documentation for **Niimbot** label
+printers — print straight from the browser, with no intermediary app and no
+dependencies.
+
+Reverse-engineered and validated on real hardware (**Niimbot B1**, **B1 Pro**
+and **M2-H**). Two print-task variants over the same frame cover the
+**B1 Pro / B21 Pro / D11** line (300 dpi, `v4`) and the **B1 / M2-H / B21** line
+(`b1`, mostly protocol 3) — chosen automatically per connected printer.
+
+### 🖨 [Try the live demo →](https://iscarelli.github.io/niimbot-web-bluetooth/demo/)
+
+Open it in **Chrome/Edge**, click *Connect & identify printer*, and print a test
+label. (Web Bluetooth needs HTTPS — the live demo and `localhost` both qualify.)
 
 ## Contents
 
@@ -20,15 +31,19 @@ Reverse-engineered and validated on real hardware (**Niimbot B1 Pro** and
 
 ## Supported printers
 
-| Model | `task` | dpi | Status |
-|---|---|---|---|
-| **Niimbot B1 Pro** | `v4` | 300 | ✅ Validated on real hardware |
-| **Niimbot B1** | `b1` | 203 | ✅ Validated on real hardware |
+| Model | `task` | dpi | Model id | Status |
+|---|---|---|---|---|
+| **Niimbot B1 Pro** | `v4` | 300 | 4097 | ✅ Validated on real hardware |
+| **Niimbot B1** | `b1` | 203 | 4096 | ✅ Validated on real hardware |
+| **Niimbot M2-H** | `b1` | 300 | 4608 | ✅ Validated on real hardware |
 
-Only these two are in `registry.json` and tested end-to-end. Other printers on the
-same two protocol families — **`v4`**: D11_H / B21 Pro / D110_M; **`b1`**: B21 / D11 /
-D110 / B21S — are likely compatible but **untested**. To try one, add a model entry to
-`registry.json` (copy `b1pro` or `b1` and set its `task`/`dpi`); please report results.
+These three are in `registry.json` and tested end-to-end. Other printers on the same
+two protocol families — **`v4`**: D11_H / B21 Pro / D110_M; **`b1`**: B21 / D11 / D110 /
+B21S — are likely compatible but **untested**. To try one, add a model entry to
+`registry.json` (copy an existing model, set its `task`/`dpi`/`id`); please report results.
+
+> The driver auto-detects the connected model (see *Selecting your printer*), so it
+> picks the right `task` and flow control even though several models share a BLE name.
 
 ## Selecting your printer
 
