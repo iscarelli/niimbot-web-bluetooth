@@ -6,6 +6,13 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+## [1.3.2] - 2026-06-07
+### Removed
+- Dropped the unused `printhead` field from the `MODEL_IDS` table in `src/niimbot.js`.
+  The driver never read it (the print width comes from each registry size's `w_px`),
+  and a single per-model figure invited confusion with label width — e.g. the B1 Pro
+  50×30 renders at 584 px even though its printhead is 567 px. No behavior change.
+
 ## [1.3.1] - 2026-06-07
 ### Fixed
 - `registry.json`: removed a stale `_untested` marker on the `T50x30_m2h` size — the
@@ -47,7 +54,8 @@ All notable changes to this project are documented here. The format is based on
   (`v4`, 300 dpi), reverse-engineered protocol V4 documentation, and a standalone demo.
 - Multi-label batches print as one continuous job (no stop/retract between labels).
 
-[Unreleased]: https://github.com/iscarelli/niimbot-web-bluetooth/compare/v1.3.1...HEAD
+[Unreleased]: https://github.com/iscarelli/niimbot-web-bluetooth/compare/v1.3.2...HEAD
+[1.3.2]: https://github.com/iscarelli/niimbot-web-bluetooth/compare/v1.3.1...v1.3.2
 [1.3.1]: https://github.com/iscarelli/niimbot-web-bluetooth/compare/v1.3.0...v1.3.1
 [1.3.0]: https://github.com/iscarelli/niimbot-web-bluetooth/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/iscarelli/niimbot-web-bluetooth/compare/v1.1.0...v1.2.0

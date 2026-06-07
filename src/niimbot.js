@@ -31,7 +31,7 @@
 (function (root) {
   "use strict";
 
-  const VERSION = "1.3.1";   // shown in the demo/console; bump on each release (or dev change)
+  const VERSION = "1.3.2";   // shown in the demo/console; bump on each release (or dev change)
   const SVC_UUID = "e7810a71-73ae-499d-8c15-faa9aef0c3f2";
   const CHAR_UUID = "bef8d6c9-9c21-4c9e-b632-bd58c1009f9f";
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -178,11 +178,15 @@
   // `paced` = needs the ~10 ms gap between unacked row writes (the 203 dpi B1 drops
   // rows on a full-speed burst). The 300 dpi B1-Pro-class units (B1 Pro, M2-H) take
   // the unpaced "fast" burst, so flow control is per-MODEL, not per-task.
+  // The actual print width comes from the registry size's `w_px` (per label), so a
+  // model-level printhead figure isn't needed here and is omitted to avoid confusing
+  // it with label width (e.g. B1 Pro 50×30 renders at 584 px though its printhead is
+  // 567 px). niimbluelib has the printhead resolutions if ever needed.
   const MODEL_IDS = {
-    4096: { label: "Niimbot B1",     task: "b1", dpi: 203, printhead: 384, paced: true },
-    4097: { label: "Niimbot B1 Pro", task: "v4", dpi: 300, printhead: 567, paced: false },
-    4098: { label: "Niimbot B1 SE",  task: "b1", dpi: 203, printhead: 384, paced: true },
-    4608: { label: "Niimbot M2-H",   task: "b1", dpi: 300, printhead: 567, paced: false },  // B1-Pro-class: b1 command sequence (per niimbluelib; v4 tested no better) + fast writes
+    4096: { label: "Niimbot B1",     task: "b1", dpi: 203, paced: true },
+    4097: { label: "Niimbot B1 Pro", task: "v4", dpi: 300, paced: false },
+    4098: { label: "Niimbot B1 SE",  task: "b1", dpi: 203, paced: true },
+    4608: { label: "Niimbot M2-H",   task: "b1", dpi: 300, paced: false },  // B1-Pro-class: b1 command sequence (per niimbluelib; v4 tested no better) + fast writes
   };
   let printerInfo = null;   // { modelId, protocolVersion, label, task, dpi } after connect
 
