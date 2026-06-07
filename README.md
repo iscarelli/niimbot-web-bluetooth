@@ -3,8 +3,11 @@
 **Web Bluetooth** driver and protocol documentation for **Niimbot** label
 printers — print straight from the browser, with no intermediary app.
 
-Protocol **V4** (D11 / B1 Pro / B21 Pro line), reverse-engineered and validated
-on real hardware (**Niimbot B1 Pro**).
+Reverse-engineered and validated on real hardware (**Niimbot B1 Pro** and
+**Niimbot B1**). Two print-task variants over the same frame cover the
+**B1 Pro / B21 Pro / D11** line (300 dpi, `v4`) and the **B1 / B21** line
+(203 dpi, protocol-3 `b1`) — selected per model via the `task` field in
+`registry.json`.
 
 ## Contents
 
@@ -20,7 +23,8 @@ on real hardware (**Niimbot B1 Pro**).
 ```html
 <script src="src/niimbot.js"></script>
 <script>
-  const model = { name_prefixes: ["B1"], density: 3, label_type: 1, speed: 1 };
+  // task: "v4" = B1 Pro/B21 Pro/D11 (300dpi); "b1" = B1/B21 (203dpi).
+  const model = { name_prefixes: ["B1"], task: "v4", density: 3, label_type: 1, speed: 1 };
   const size  = { w_px: 584, h_px: 354 };       // T50×30 (50×30mm @ 300dpi)
   if (Niimbot.isSupported()) {
     await Niimbot.printImage("/path/to/label.png", {

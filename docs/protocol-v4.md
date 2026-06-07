@@ -1,7 +1,9 @@
-# Niimbot Protocol V4 (D11 / B1 Pro / B21 Pro line)
+# Niimbot Protocol V4 (D11 / B1 / B1 Pro / B21 line)
 
-Reverse-engineered and validated in the lab on the **Niimbot B1 Pro**.
-Compatible with the D110_M / D11_H / B1 Pro / B21 Pro line.
+Reverse-engineered and validated in the lab on the **Niimbot B1 Pro** and the
+**Niimbot B1**. Covers two print-task variants over the same frame: `v4`
+(D110_M / D11_H / B1 Pro / B21 Pro, 300 dpi) and `b1` (B1 / B21 / D11, **protocol
+version 3**, 203 dpi). See [Print task variants](#print-task-variants-v4-vs-b1).
 
 ## Transport (Web Bluetooth / BLE GATT)
 
@@ -31,13 +33,18 @@ Responses arrive via NOTIFY in the same frame (`0x55 0x55 cmd len ... crc 0xAA 0
 
 | Cmd | Name | Response | Notes |
 |---|---|---|---|
-| `0x21` | SetDensity | `0x31` | data = `[density]` (1–3; 3 = darkest) |
+| `0xC1` | Connect | `0xC2` | sent raw with a `03` prefix: `03 55 55 C1 01 01 C1 AA AA`. Resp data = `[connectResult]` |
+| `0xA5` | PrinterStatusData | `0xB5` | data = `[1]`. **`b1` handshake** (see below) |
+| `0x40` | PrinterInfo | `0x48`,`0x4B`,`0x4D`,`0x4A`,`0x47`,`0x43`,`0x4C`,`0x49` | data = `[sub]`. **`b1` handshake** — one query per sub-code |
+| `0xDC` | Heartbeat | `0xD9` | data = `[04]`. **`b1` handshake** |
+| `0x21` | SetDensity | `0x31` | data = `[density]` (B1: 1–5; 3 = default) |
 | `0x23` | SetLabelType | `0x33` | data = `[1]` (with gaps) |
-| `0x01` | PrintStart | `0x02` | data = `[00 01 00 00 00 00 00 speed 00]` (9 bytes; speed 0/1) |
-| `0xA3` | PrintStatus | `0xB3` | data = `[1]`. Response: `page(u16 BE), print%, feed%` |
-| `0x13` | SetPageSize | `0x14` | data = `[H_hi H_lo W_hi W_lo 00 01 00×7]` (13 bytes) |
+| `0x01` | PrintStart | `0x02` | data = `[pages_hi pages_lo 00 00 00 00 00 speed 00]` (9b, `v4`) **or** `[pages_hi pages_lo 00 00 00 00 00]` (7b, `b1`) |
+| `0x03` | PageStart | `0x04` | data = `[1]`. **`b1` task only** — opens each page before SetPageSize |
+| `0xA3` | PrintStatus | `0xB3` | data = `[1]`. Response: `page(u16 BE), print%, feed%, state…`. `b1`: `page` reaches 1 at 100 % |
+| `0x13` | SetPageSize | `0x14` | data = `[H_hi H_lo W_hi W_lo 00 01 00×7]` (13b, `v4`) **or** `[H_hi H_lo W_hi W_lo 00 01]` (6b, `b1` — rows, cols, copies) |
 | `0x84` | PrintEmptyRow | — | data = `[row_hi, row_lo, run]` (blank row) |
-| `0x85` | PrintBitmapRow | — | data = `[row_hi, row_lo, 0, total_lo, total_hi, run, ...stride]` |
+| `0x85` | PrintBitmapRow | — | data = `[row_hi, row_lo, 00, total_lo, total_hi, run, ...stride]` (total mode, both tasks) |
 | `0xE3` | PrintEnd (page) | `0xE4` | data = `[1]` |
 | `0xF3` | PrintEnd | `0xF4` | data = `[1]` |
 
@@ -66,16 +73,67 @@ PrintEnd(0xF3,[1])              -> 0xF4
 > **Why the poll is critical:** without waiting for `page >= 1`, `PrintEnd`
 > arrives mid-print and the label comes out **cut off**.
 
-## Label geometry (calibrated @ 300 dpi)
+## Print task variants (`v4` vs `b1`)
 
-| Code | Printer | w_px | h_px | stride |
-|---|---|---|---|---|
-| `T50*30` | B1 Pro | 584 | 354 | 73 |
-| `T30*45+50` | B1 Pro (cable flag) | 354 | 1122 | 45 |
-| `T15*50` | D11_H | 136 | 590 | 17 |
-| `T12.5*74+35` | D11_H (cable flag) | 136 | 1287 | 17 |
+The same frame carries two print-task sequences, selected per model via the
+`task` field in `registry.json`. The bitmap rows (`0x84`/`0x85`, total mode),
+status poll and `PrintEnd` are identical; setup and delivery differ.
 
-300 dpi ≈ 11.81 px/mm. The `SetPageSize` packet takes `H` (rows) and then `W`.
+| Step | `v4` (D11 / B1 Pro / B21 Pro, 300 dpi) | `b1` (B1 / B21, protocol 3, 203 dpi) |
+|---|---|---|
+| Post-connect handshake | none | **required** — see below |
+| PrintStart `0x01` | 9 bytes, includes `speed` | **7 bytes**, no `speed`; `pages`=1 |
+| Page open | `PrintStatus 0xA3` one-way (+~30 ms) | **`PageStart 0x03 [1]` → `0x04`** |
+| SetPageSize `0x13` | 13 bytes | **6 bytes** (`H,W,copies`) |
+| Row write | unacked burst | **paced** unacked (~12 ms/packet) |
+| Job span | one job, N pages pipelined | **one full job per label** |
+
+`b1` flow: handshake → `SetDensity` → `SetLabelType` →
+`PrintStart(0x01,[pages,0,0,0,0,0]) -> 0x02` →
+`PageStart(0x03,[1]) -> 0x04` → `SetPageSize(0x13,[H,W,01]) -> 0x14` → rows →
+`PageEnd(0xE3,[1]) -> 0xE4` → poll `0xA3`→`0xB3` until `page>=1` →
+`PrintEnd(0xF3,[1]) -> 0xF4`.
+
+### `b1` post-connect handshake (required)
+
+Validated on a B1 reporting `protocolVersion 3`. Without this exact handshake the
+B1 **accepts every setup command but never starts printing**: `PageEnd` gets no
+`0xE4`, status freezes at state byte `0x02`, paper never moves. Replicating
+niim.blue's connect arms it:
+
+```
+PrinterStatusData(0xA5,[1])              -> 0xB5
+PrinterInfo(0x40,[sub]) for sub in 08 0b 0d 0a 07 03 0c 09   -> 0x48/0x4B/…
+Heartbeat(0xDC,[04])                     -> 0xD9
+```
+
+### `b1` row delivery (flow control)
+
+The characteristic is **`WRITE_NO_RESPONSE` only**, so there is no per-write ack.
+Blasting the row packets makes the B1 silently **drop rows** → the page is
+incomplete → `PageEnd` never acks, or the print stalls mid-label with the paper
+oscillating. Inserting a short gap (**~12 ms**) between unacked row writes
+delivers them reliably. The B1 Pro line tolerates the unpaced burst.
+
+## Label geometry
+
+300 dpi ≈ 11.81 px/mm; 203 dpi = 8 px/mm. `SetPageSize` takes `H` (rows, feed
+axis) then `W` (cols, printhead axis). Set **`W` = the printhead width**
+(B1 Pro 567 px, **B1 384 px**), not the label width: the printer prints columns
+`0 … printhead-1` and silently drops the rest. A 50 mm label is 400 px at 203 dpi,
+but the B1 printhead is 384 px (≈48 mm) — using `W`=400 loses the rightmost ~16 px
+(a right-edge border vanishes); use `W`=384 and print the 48 mm the head supports.
+
+| Code | Printer | task | w_px | h_px | stride |
+|---|---|---|---|---|---|
+| `T50*30` | B1 Pro | `v4` | 584 | 354 | 73 |
+| `T50*30` | B1 | `b1` | 384 | 240 | 48 |
+| `T30*45+50` | B1 Pro (cable flag) | `v4` | 354 | 1122 | 45 |
+| `T15*50` | D11_H | `v4` | 136 | 590 | 17 |
+| `T12.5*74+35` | D11_H (cable flag) | `v4` | 136 | 1287 | 17 |
+
+> B1 `T50*30` (384 × 240) printed correctly on real hardware. `w_px`=384 is the
+> full printhead (48 mm); the 50 mm label keeps a ~2 mm unprinted right margin.
 
 ## Bitmap encoding
 
@@ -83,6 +141,12 @@ PrintEnd(0xF3,[1])              -> 0xF4
 per row, MSB-first, `stride = ceil(W/8)` bytes. Identical consecutive rows are
 grouped via run-length (`run`), and blank rows use the dedicated `0x84` opcode —
 this drastically cuts the number of BLE packets.
+
+**Row black-pixel count** — both tasks use **total mode**: the three count bytes
+are `[00, total_lo, total_hi]`, a single 16-bit black-pixel count. Verified
+byte-identical to niim.blue's B1 output. (A 3-chunk "split" count `[c0,c1,c2]`
+exists in the wider protocol but is **not** required by the B1 — total mode prints
+correctly. The `0x83` indexed-row opcode is likewise unused here.)
 
 ## References
 

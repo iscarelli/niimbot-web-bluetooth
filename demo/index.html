@@ -34,11 +34,18 @@
   <div id="status"></div>
   <canvas id="preview"></canvas>
 
-  <script src="../src/niimbot.js"></script>
+  <script>
+    // Cache-bust the driver during development so edits always load (the dev
+    // server was returning 304s). Writes a <script> with a unique query string.
+    document.write('<script src="../src/niimbot.js?t=' + Date.now() + '"><\/script>');
+  </script>
   <script>
   (async function () {
     const $ = (id) => document.getElementById(id);
     const status = (s) => { $("status").textContent = s; };
+
+    document.title = "niimbot demo — driver " + (Niimbot.VERSION || "?");
+    console.log("[demo] loaded Niimbot driver version:", Niimbot.VERSION);
 
     if (!Niimbot.isSupported()) {
       $("status").innerHTML = '<span class="warn">Web Bluetooth unavailable — use Chrome/Edge over HTTPS or localhost.</span>';
@@ -50,10 +57,24 @@
       const o = new Option(m.label, k, k === reg.default_model, k === reg.default_model);
       $("model").add(o);
     }
-    for (const [k, s] of Object.entries(reg.sizes)) {
-      const o = new Option(s.label, k, k === reg.default_size, k === reg.default_size);
-      $("size").add(o);
+
+    // Sizes are calibrated per dpi, so only offer those matching the selected
+    // model (a B1 50×30 has different pixels than a B1 Pro 50×30). Keep the
+    // current pick if it's still valid, else fall back to the default/first.
+    function populateSizes() {
+      const dpi = reg.models[$("model").value].dpi;
+      const prev = $("size").value;
+      $("size").innerHTML = "";
+      let selected = null;
+      for (const [k, s] of Object.entries(reg.sizes)) {
+        if (s.dpi != null && dpi != null && s.dpi !== dpi) continue;
+        $("size").add(new Option(s.label, k));
+        if (k === prev || (selected === null && k === reg.default_size)) selected = k;
+      }
+      $("size").value = selected || $("size").options[0].value;
     }
+    populateSizes();
+    $("model").addEventListener("change", () => { populateSizes(); refresh(); });
 
     function drawTest(size, text, target) {
       const c = target || $("preview");

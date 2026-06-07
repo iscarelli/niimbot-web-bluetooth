@@ -1,6 +1,8 @@
 /* ── niimbot.js — Web Bluetooth driver for Niimbot printers ───────────────────
- * Generic and application-agnostic. Protocol V4 (D11 / B1 Pro / B21 Pro line),
- * reverse-engineered and validated on real B1 Pro hardware.
+ * Generic and application-agnostic. Protocol V4, with two print-task variants:
+ *   "v4"  D11 / B1 Pro / B21 Pro line (300 dpi)  — validated on real B1 Pro
+ *   "b1"  B1 / B21 line (203 dpi)                 — see registry.json `task`
+ * Reverse-engineered against niimbluelib; the task is chosen per model.
  *
  * No dependencies, no build. Load with <script src="niimbot.js"></script> and
  * use the global `window.Niimbot` API. It never touches the DOM nor fetches any
@@ -9,7 +11,7 @@
  *   await Niimbot.printImage(pngUrl, { model, size, onProgress });
  *   await Niimbot.printBatch([url1, url2], { model, size, onProgress });
  *
- *   model: { name_prefixes:[], density, label_type, speed }   (from registry.json)
+ *   model: { name_prefixes:[], task, density, label_type, speed }  (from registry.json)
  *   size:  { w_px, h_px }                                      (from registry.json)
  *
  * Requirements: Chrome/Edge over HTTPS (or localhost). Web Bluetooth does not
@@ -29,9 +31,28 @@
 (function (root) {
   "use strict";
 
+  const VERSION = "b1-proto3-diag-7";   // bump on each change so the console proves fresh JS loaded
   const SVC_UUID = "e7810a71-73ae-499d-8c15-faa9aef0c3f2";
   const CHAR_UUID = "bef8d6c9-9c21-4c9e-b632-bd58c1009f9f";
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+  // ── Debug logging (toggle via Niimbot.DEBUG) ────────────────────────────────
+  let DEBUG = false;
+  const h2 = (b) => b.toString(16).padStart(2, "0");
+  const hex = (arr) => Array.from(arr).map(h2).join(" ");
+  let _imgRows = 0; // coalesce the many 0x84/0x85 row packets into one log line
+  function flushImg() {
+    if (_imgRows && DEBUG) console.log(`[niimbot] →  (… ${_imgRows} image rows 0x84/0x85 …)`);
+    _imgRows = 0;
+  }
+  function logTx(cmd, data) {
+    if (!DEBUG) return;
+    if (cmd === 0x84 || cmd === 0x85) { _imgRows++; return; }
+    flushImg();
+    console.log(`[niimbot] →  ${h2(cmd)} (${(data || []).length}b) ${hex(data || [])}`);
+  }
+  function logRx(cmd, data) { if (DEBUG) { flushImg(); console.log(`[niimbot] ←  ${h2(cmd)} (${data.length}b) ${hex(data)}`); } }
+  function logMsg(m) { if (DEBUG) { flushImg(); console.log(`[niimbot] ·  ${m}`); } }
 
   // Connection reused across prints (module singleton).
   let device = null;
@@ -59,6 +80,7 @@
     const len = v.getUint8(3);
     const data = [];
     for (let i = 0; i < len && 4 + i < v.byteLength; i++) data.push(v.getUint8(4 + i));
+    logRx(cmd, data);
     if (pending && (pending.cmd === cmd || pending.cmd === null)) {
       const p = pending; pending = null;
       p.resolve({ cmd, data });
@@ -67,22 +89,34 @@
     }
   }
 
+  // Flow control. The protocol-3 B1 silently drops rows under an unacked burst,
+  // leaving the page incomplete (PageEnd never acks). "acked" (write-with-response)
+  // gives per-packet ack + ordered delivery; "paced" falls back to unacked writes
+  // with a short gap when the characteristic has no write property. The B1 Pro line
+  // tolerates the fastest unacked writes, so it stays on "fast".
+  let writeMode = "fast";   // "fast" | "acked" | "paced"
+  const PACE_MS = 12;       // gap between unacked B1 writes so rows aren't dropped mid-page
   async function writeRaw(bytes) {
+    if (writeMode === "acked") { await characteristic.writeValueWithResponse(bytes); return; }
     // writeValueWithoutResponse pode estourar o buffer BLE em rajada — retry curto.
     for (let tries = 0; tries < 30; tries++) {
-      try { await characteristic.writeValueWithoutResponse(bytes); return; }
-      catch (e) { await sleep(4); }
+      try {
+        await characteristic.writeValueWithoutResponse(bytes);
+        if (writeMode === "paced") await sleep(PACE_MS);
+        return;
+      } catch (e) { await sleep(4); }
     }
     throw new Error("Failed to write to BLE (buffer full?)");
   }
 
-  function send(cmd, data) { return writeRaw(pack(cmd, data)); }
+  function send(cmd, data) { logTx(cmd, data); return writeRaw(pack(cmd, data)); }
 
   async function sendWait(cmd, data, wantResp, timeoutMs) {
     const wait = new Promise((resolve) => { pending = { cmd: wantResp, resolve }; });
     await send(cmd, data);
     const res = await Promise.race([wait, sleep(timeoutMs).then(() => null)]);
     if (pending && pending.cmd === wantResp) pending = null; // clear on timeout
+    if (!res) logMsg(`⚠ no response to ${h2(cmd)} (wanted ${h2(wantResp)}) after ${timeoutMs}ms`);
     return res; // { cmd, data } or null
   }
 
@@ -99,6 +133,7 @@
 
   async function connect(model) {
     if (characteristic && device && device.gatt.connected) return;
+    logMsg(`Niimbot ${VERSION} — connecting (task=${(model && model.task) || "?"})`);
     if (!navigator.bluetooth) throw new Error("Web Bluetooth unavailable (use Chrome/Edge over HTTPS).");
     const prefixes = (model && model.name_prefixes) || [];
     const filters = prefixes.length
@@ -107,12 +142,29 @@
     const server = await device.gatt.connect();
     const svc = await server.getPrimaryService(SVC_UUID);
     characteristic = await svc.getCharacteristic(CHAR_UUID);
+    const p = characteristic.properties || {};
+    writeMode = isB1(model) ? (p.write ? "acked" : "paced") : "fast";   // flow-control the B1 burst
+    logMsg(`char props: write=${!!p.write} writeNoResp=${!!p.writeWithoutResponse} → writeMode=${writeMode}`);
     await characteristic.startNotifications();
     characteristic.addEventListener("characteristicvaluechanged", onNotify);
     device.addEventListener("gattserverdisconnected", () => { characteristic = null; });
     // Initial connection packet (raw, 0x03 prefix — same as niimblue).
     await writeRaw(new Uint8Array([0x03, 0x55, 0x55, 0xc1, 0x01, 0x01, 0xc1, 0xaa, 0xaa]));
     await sleep(200);
+    if (isB1(model)) await b1Handshake();
+  }
+
+  // The protocol-3 B1 will accept all the setup commands but never actually start
+  // printing (PageEnd gets no 0xE4, status frozen at state 0x02) unless it first
+  // sees the same post-connect handshake niim.blue does: read status + printer info
+  // + a heartbeat. These are reads/keepalives that "arm" the printer for a job.
+  async function b1Handshake() {
+    logMsg("B1 handshake (status + info + heartbeat)");
+    await sendWait(0xa5, [0x01], 0xb5, 1000);                  // PrinterStatusData
+    for (const sub of [0x08, 0x0b, 0x0d, 0x0a, 0x07, 0x03, 0x0c, 0x09]) {
+      await sendWait(0x40, [sub], null, 600);                  // PrinterInfo (response code varies)
+    }
+    await sendWait(0xdc, [0x04], 0xd9, 1000);                  // Heartbeat
   }
 
   // ── Bitmap: image → rows packed MSB-first (1 = black) ───────────────────────
@@ -145,9 +197,9 @@
     for (let b = 0; b < stride; b++) { let v = buf[off + b]; while (v) { n += v & 1; v >>= 1; } }
     return n;
   }
-
-  // Row-by-row bitmap, grouping identical rows (run-length):
-  // 0x84 (empty) / 0x85 (with pixels).
+  // Row-by-row bitmap (both tasks), grouping identical rows (run-length):
+  // 0x84 (empty) / 0x85 (with pixels, count in "total mode" [00, lo, hi], repeat).
+  // Verified byte-identical to niim.blue's B1 output.
   async function sendImage(buf, h, stride) {
     let r = 0;
     while (r < h) {
@@ -182,30 +234,47 @@
   // label (the old printOnePacked) caused a stop/retract between every label; the
   // Niimbot app keeps a single job open and streams pages back-to-back.
 
-  // PrintStart declares the total page count up front (16-bit, big-endian at
-  // bytes [0..1]); each page then declares its own copy count of 1 in SetPageSize.
+  // Two task variants (see registry.json `task`):
+  //   "v4" (D110M / B1 Pro / B21 Pro, protocol 5-ish, 300 dpi): PrintStart 9b
+  //         (speed + page count); a single job streams N pages; status-poll paced.
+  //   "b1" (B1 / B21 / D11, *protocol 3*, 203 dpi): PrintStart 7b · PageStart [1]
+  //         · SetPageSize 6b [H,W,copies] (cols = full label width, e.g. 400 for a
+  //         50 mm label even though the printhead is 384) · shared total-mode rows
+  //         · PageEnd · shared status-poll + PrintEnd. Byte-for-byte as niimbluelib.
+  //         One full job per label (no cross-label pipelining).
+  function isB1(model) { return model && model.task === "b1"; }
+
   async function beginJob(model, totalPages, onProgress) {
     onProgress && onProgress("configuring…");
     await sendWait(0x21, [model.density], 0x31, 1000);                       // SetDensity
     await sendWait(0x23, [model.label_type], 0x33, 1000);                   // SetLabelType
     const n = Math.max(1, totalPages | 0);
-    await sendWait(0x01,
-      [(n >> 8) & 0xff, n & 0xff, 0, 0, 0, 0, 0, model.speed, 0], 0x02, 2000); // PrintStart
+    const start = isB1(model)
+      ? [(n >> 8) & 0xff, n & 0xff, 0, 0, 0, 0, 0]                          // printStart 7b
+      : [(n >> 8) & 0xff, n & 0xff, 0, 0, 0, 0, 0, model.speed, 0];         // printStart 9b (…, speed, flag)
+    await sendWait(0x01, start, 0x02, 2000);                                // PrintStart
   }
 
   // Queue one page's data within an open job — does NOT wait for it to print, so
   // the next page can be sent while this one is still printing (keeps the printer
   // buffer primed → no stop between labels).
-  async function sendPagePacked(size, buf, stride, onProgress) {
+  async function sendPagePacked(model, size, buf, stride, onProgress) {
     const W = size.w_px, H = size.h_px;
-    await send(0xa3, [0x01]); await sleep(30);                               // PrintStatus (one-way)
-    await sendWait(0x13, [
-      (H >> 8) & 0xff, H & 0xff, (W >> 8) & 0xff, W & 0xff,
-      0, 1, 0, 0, 0, 0, 0, 0, 0,
-    ], 0x14, 2000);                                                          // SetPageSize (1 copy)
+    if (isB1(model)) {
+      await sendWait(0x03, [0x01], 0x04, 1000);                             // PageStart (B1 only)
+      await sendWait(0x13, [
+        (H >> 8) & 0xff, H & 0xff, (W >> 8) & 0xff, W & 0xff, 0, 1,
+      ], 0x14, 2000);                                                       // SetPageSize 6b (rows, cols, copies=1)
+    } else {
+      await send(0xa3, [0x01]); await sleep(30);                           // PrintStatus (one-way)
+      await sendWait(0x13, [
+        (H >> 8) & 0xff, H & 0xff, (W >> 8) & 0xff, W & 0xff,
+        0, 1, 0, 0, 0, 0, 0, 0, 0,
+      ], 0x14, 2000);                                                       // SetPageSize 13b (1 copy)
+    }
 
     onProgress && onProgress("sending image…");
-    await sendImage(buf, H, stride);
+    await sendImage(buf, H, stride);                                         // shared total-mode 0x84/0x85 encoder
     await sendWait(0xe3, [0x01], 0xe4, 3000);                                // PageEnd (0xE3)
   }
 
@@ -225,6 +294,14 @@
     await sendWait(0xf3, [0x01], 0xf4, 2500);                                // PrintEnd (0xF3)
   }
 
+  // Finalize one label: poll the printed-page counter to 1 (so PrintEnd doesn't
+  // arrive mid-print and cut the label), then PrintEnd. Same for both tasks — the
+  // protocol-3 B1's 0xB3 status carries page in the same bytes (page→1 at 100%).
+  async function finishJob(model, onProgress) {
+    await waitPage(1, onProgress);
+    await endJob();
+  }
+
   async function printImage(url, opts) {
     opts = opts || {};
     const { model, size, onProgress } = opts;
@@ -232,9 +309,8 @@
     await connect(model);
     const { buf, stride } = await imageToPacked(url, size.w_px, size.h_px);
     await beginJob(model, 1, onProgress);
-    await sendPagePacked(size, buf, stride, onProgress);
-    await waitPage(1, onProgress);
-    await endJob();
+    await sendPagePacked(model, size, buf, stride, onProgress);
+    await finishJob(model, onProgress);
     onProgress && onProgress("ok");
   }
 
@@ -251,13 +327,25 @@
     onProgress && onProgress("connecting…");
     await connect(model);
     const N = urls.length;
+    // Protocol-3 B1: no cross-label pipelining — print one full job per label.
+    if (isB1(model)) {
+      for (let i = 0; i < N; i++) {
+        const tag = `label ${i + 1}/${N}`;
+        const { buf, stride } = await imageToPacked(urls[i], size.w_px, size.h_px);
+        await beginJob(model, 1, (s) => onProgress && onProgress(`${tag}: ${s}`));
+        await sendPagePacked(model, size, buf, stride, (s) => onProgress && onProgress(`${tag}: ${s}`));
+        await finishJob(model, (s) => onProgress && onProgress(`${tag}: ${s}`));
+      }
+      onProgress && onProgress("ok");
+      return;
+    }
     // Single job for the whole batch: pages stream back-to-back, no retract between.
     await beginJob(model, N, onProgress);
     for (let i = 0; i < N; i++) {
       const tag = `label ${i + 1}/${N}`;
       onProgress && onProgress(`${tag}: sending…`);
       const { buf, stride } = await imageToPacked(urls[i], size.w_px, size.h_px);
-      await sendPagePacked(size, buf, stride,
+      await sendPagePacked(model, size, buf, stride,
         (s) => onProgress && onProgress(`${tag}: ${s}`));
       // Send page i, THEN wait for page i-LOOKAHEAD to finish — so the just-sent
       // page is already buffered before the printer needs it (no inter-label stop).
@@ -271,7 +359,8 @@
   }
 
   root.Niimbot = {
-    SVC_UUID, CHAR_UUID,
+    VERSION, SVC_UUID, CHAR_UUID,
+    get DEBUG() { return DEBUG; }, set DEBUG(v) { DEBUG = !!v; },
     isSupported: () => !!navigator.bluetooth,
     connect, printImage, printBatch,
   };
