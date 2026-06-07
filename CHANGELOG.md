@@ -6,6 +6,12 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+## [1.3.5] - 2026-06-07
+### Added
+- README: a "Real-world use" GIF (the driver printing real labels in a production app)
+  and a Troubleshooting section (macOS blank prints → `PACE_MS`, model-mismatch errors,
+  dense/BLE tuning, Web Bluetooth support, `DEBUG`). Docs only — no code change.
+
 ## [1.3.4] - 2026-06-07
 ### Fixed
 - **macOS:** dense/batch prints came out **blank** on the B1 Pro (and other "fast"
@@ -73,7 +79,8 @@ All notable changes to this project are documented here. The format is based on
   (`v4`, 300 dpi), reverse-engineered protocol V4 documentation, and a standalone demo.
 - Multi-label batches print as one continuous job (no stop/retract between labels).
 
-[Unreleased]: https://github.com/iscarelli/niimbot-web-bluetooth/compare/v1.3.4...HEAD
+[Unreleased]: https://github.com/iscarelli/niimbot-web-bluetooth/compare/v1.3.5...HEAD
+[1.3.5]: https://github.com/iscarelli/niimbot-web-bluetooth/compare/v1.3.4...v1.3.5
 [1.3.4]: https://github.com/iscarelli/niimbot-web-bluetooth/compare/v1.3.3...v1.3.4
 [1.3.3]: https://github.com/iscarelli/niimbot-web-bluetooth/compare/v1.3.2...v1.3.3
 [1.3.2]: https://github.com/iscarelli/niimbot-web-bluetooth/compare/v1.3.1...v1.3.2

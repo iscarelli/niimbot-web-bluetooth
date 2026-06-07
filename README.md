@@ -154,6 +154,18 @@ offers sizes matching the selected model's dpi — mirroring the selection rules
 Buttons cover a single label, 3 identical copies (one upload), a 3-label batch
 (distinct), and dense stress tests.
 
+## Real-world use
+
+The driver running inside a real application, printing actual labels over Web
+Bluetooth — not just the test pattern:
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/iscarelli/niimbot-web-bluetooth/main/docs/real.gif"
+       alt="The driver printing real labels from a production web app" width="560">
+</p>
+
+<!-- Tip: edit this caption to name the app / use case for stronger social proof. -->
+
 ## Troubleshooting
 
 | Symptom | Cause / fix |
