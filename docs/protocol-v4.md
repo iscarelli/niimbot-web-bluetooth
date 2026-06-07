@@ -82,11 +82,11 @@ status poll and `PrintEnd` are identical; setup and delivery differ.
 | Step | `v4` (D11 / B1 Pro / B21 Pro, 300 dpi) | `b1` (B1 / B21, protocol 3, 203 dpi) |
 |---|---|---|
 | Post-connect handshake | none | **required** — see below |
-| PrintStart `0x01` | 9 bytes, includes `speed` | **7 bytes**, no `speed`; `pages`=1 |
+| PrintStart `0x01` | 9 bytes, includes `speed` | **7 bytes**, no `speed`; `pages`=N |
 | Page open | `PrintStatus 0xA3` one-way (+~30 ms) | **`PageStart 0x03 [1]` → `0x04`** |
 | SetPageSize `0x13` | 13 bytes | **6 bytes** (`H,W,copies`) |
-| Row write | unacked burst | **paced** unacked (~12 ms/packet) |
-| Job span | one job, N pages pipelined | **one full job per label** |
+| Row write | unacked burst | **paced** unacked (~10 ms/write), frames bundled |
+| Job span | one job, N pages pipelined | one job, N pages pipelined |
 
 `b1` flow: handshake → `SetDensity` → `SetLabelType` →
 `PrintStart(0x01,[pages,0,0,0,0,0]) -> 0x02` →
@@ -112,8 +112,28 @@ Heartbeat(0xDC,[04])                     -> 0xD9
 The characteristic is **`WRITE_NO_RESPONSE` only**, so there is no per-write ack.
 Blasting the row packets makes the B1 silently **drop rows** → the page is
 incomplete → `PageEnd` never acks, or the print stalls mid-label with the paper
-oscillating. Inserting a short gap (**~12 ms**) between unacked row writes
-delivers them reliably. The B1 Pro line tolerates the unpaced burst.
+oscillating. Inserting a short gap (**~10 ms**, niim.blue's value) between unacked
+writes delivers them reliably. The B1 Pro line tolerates the unpaced burst.
+
+### `b1` frame bundling (throughput)
+
+Since every BLE write costs a ~10 ms pace, a dense page (≈one packet per row, when
+run-length can't collapse it) is dominated by the *write count*, not the bytes. The
+protocol is a frame stream and the printer reassembles it, so several
+`[55 55 … aa aa]` frames can be concatenated into **one** write (kept within the BLE
+MTU). Bundling row frames up to ~240 B/write cuts a 240-row dense page from ~240
+writes to ~60, roughly 4× faster — enough to keep the printer fed so even worst-case
+content streams without stalling between labels. niim.blue does **not** bundle (one
+frame per write); this is an extra optimization here.
+
+### `b1` copies (identical labels)
+
+To print N identical labels, upload the image **once** and let the printer repeat
+it: `PrintStart` declares `pages`=N and `SetPageSize` carries `copies`=N. The status
+counter (`0xB3`) climbs 1…N as each copy prints; a single `PrintEnd` feeds out at the
+end. This is what niim.blue does for a multi-copy job — the bitmap crosses BLE only
+once, so it is far faster than re-sending the image per label. Different labels still
+need one upload each (a page per distinct image, all within the one job).
 
 ## Label geometry
 

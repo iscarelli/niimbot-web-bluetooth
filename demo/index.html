@@ -28,6 +28,7 @@
   </div>
 
   <button id="print">Connect and print</button>
+  <button id="print3copies">Print 3 copies (1 upload)</button>
   <button id="print3">Print 3-label batch</button>
   <button id="print3dense">Print 3 dense labels (stress)</button>
   <button id="print5dense">Print 5 dense labels (stress)</button>
@@ -76,7 +77,12 @@
     populateSizes();
     $("model").addEventListener("change", () => { populateSizes(); refresh(); });
 
-    function drawTest(size, text, target) {
+    // `light` skips the corner-to-corner diagonals. The diagonals touch nearly every
+    // row, so they defeat run-length and blow the packet count up to ~one-per-row
+    // (worst case for send time). A realistic label (frame + text, mostly white)
+    // collapses to a few dozen packets — use light=true to validate continuous
+    // multi-label flow without the pathological diagonals.
+    function drawTest(size, text, target, light) {
       const c = target || $("preview");
       c.width = size.w_px; c.height = size.h_px;
       const x = c.getContext("2d");
@@ -84,10 +90,12 @@
       x.strokeStyle = "#000"; x.lineWidth = 3;
       const m = size.margin || 10;
       x.strokeRect(m, m, c.width - 2 * m, c.height - 2 * m);
-      x.beginPath();
-      x.moveTo(m, m); x.lineTo(c.width - m, c.height - m);
-      x.moveTo(c.width - m, m); x.lineTo(m, c.height - m);
-      x.stroke();
+      if (!light) {
+        x.beginPath();
+        x.moveTo(m, m); x.lineTo(c.width - m, c.height - m);
+        x.moveTo(c.width - m, m); x.lineTo(m, c.height - m);
+        x.stroke();
+      }
       x.fillStyle = "#000";
       x.font = `bold ${Math.round(size.h_px * 0.16)}px sans-serif`;
       x.textAlign = "center"; x.textBaseline = "middle";
@@ -142,14 +150,32 @@
       }
     });
 
+    // niim.blue's fast path: ONE image upload, printer repeats it `copies` times.
+    // Use this whenever the labels are identical — the data crosses BLE only once.
+    $("print3copies").addEventListener("click", async () => {
+      const model = reg.models[$("model").value];
+      const size = reg.sizes[$("size").value];
+      const canvas = drawTest(size, $("text").value);
+      $("print3copies").disabled = true;
+      try {
+        await Niimbot.printImage(canvas.toDataURL("image/png"), { model, size, copies: 3, onProgress: status });
+        status("ok — 3 copies (single upload) sent.");
+      } catch (e) {
+        status("error: " + (e && e.message || e));
+      } finally {
+        $("print3copies").disabled = false;
+      }
+    });
+
     $("print3").addEventListener("click", async () => {
       const model = reg.models[$("model").value];
       const size = reg.sizes[$("size").value];
       // 3 distinct labels so the print order — and the absence of a retract
-      // between them — is obvious on the paper.
+      // between them — is obvious on the paper. Realistic (light) labels so the
+      // non-copies path streams continuously; the dense buttons cover worst case.
       const off = document.createElement("canvas");
       const urls = [1, 2, 3].map((n) => {
-        drawTest(size, `${$("text").value} #${n}`, off);
+        drawTest(size, `${$("text").value} #${n}`, off, true);
         return off.toDataURL("image/png");
       });
       $("print").disabled = true; $("print3").disabled = true;

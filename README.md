@@ -38,8 +38,11 @@ The image must be exactly `w_px × h_px`. The driver thresholds it to 1-bit
 (luminance < 128 = black) and sends it over BLE. See `registry.json` for the
 `model`/`size` values.
 
-- `Niimbot.printImage(url, { model, size, onProgress })`
-- `Niimbot.printBatch([url1, url2, …], { model, size, onProgress })`
+- `Niimbot.printImage(url, { model, size, copies, onProgress })` — `copies` (default 1)
+  prints N identical labels from a **single** upload (the printer repeats the image),
+  far faster than re-sending it; see the `b1` copies note in the protocol docs.
+- `Niimbot.printBatch([url1, url2, …], { model, size, onProgress })` — N *distinct*
+  labels in one continuous job (one upload each, streamed back-to-back).
 - `Niimbot.isSupported()` → `false` on Firefox/Safari (no Web Bluetooth)
 
 ## Requirements

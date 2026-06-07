@@ -41,6 +41,7 @@
       "w_px": 384,
       "h_px": 240,
       "margin": 8,
+      "offset_y_px": 4,
       "dpi": 203
     }
   },

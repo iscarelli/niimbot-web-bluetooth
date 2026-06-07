@@ -31,7 +31,7 @@
 (function (root) {
   "use strict";
 
-  const VERSION = "b1-proto3-diag-7";   // bump on each change so the console proves fresh JS loaded
+  const VERSION = "b1-proto3-bundle-1";   // bump on each change so the console proves fresh JS loaded
   const SVC_UUID = "e7810a71-73ae-499d-8c15-faa9aef0c3f2";
   const CHAR_UUID = "bef8d6c9-9c21-4c9e-b632-bd58c1009f9f";
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -53,6 +53,12 @@
   }
   function logRx(cmd, data) { if (DEBUG) { flushImg(); console.log(`[niimbot] ←  ${h2(cmd)} (${data.length}b) ${hex(data)}`); } }
   function logMsg(m) { if (DEBUG) { flushImg(); console.log(`[niimbot] ·  ${m}`); } }
+
+  // Timing trace for batch diagnostics (concise: a few lines per batch), gated behind
+  // DEBUG. Reveals whether an inter-label gap is us sending the next page late or the
+  // printer idling after a page. Times are ms since the batch began.
+  let _t0 = 0;
+  function tlog(m) { if (DEBUG) console.log(`[niimbot t+${String(Date.now() - _t0).padStart(5)}ms] ${m}`); }
 
   // Connection reused across prints (module singleton).
   let device = null;
@@ -95,7 +101,7 @@
   // with a short gap when the characteristic has no write property. The B1 Pro line
   // tolerates the fastest unacked writes, so it stays on "fast".
   let writeMode = "fast";   // "fast" | "acked" | "paced"
-  const PACE_MS = 12;       // gap between unacked B1 writes so rows aren't dropped mid-page
+  const PACE_MS = 10;       // gap between unacked B1 writes so rows aren't dropped mid-page (niimbluelib's value)
   async function writeRaw(bytes) {
     if (writeMode === "acked") { await characteristic.writeValueWithResponse(bytes); return; }
     // writeValueWithoutResponse pode estourar o buffer BLE em rajada — retry curto.
@@ -110,6 +116,37 @@
   }
 
   function send(cmd, data) { logTx(cmd, data); return writeRaw(pack(cmd, data)); }
+
+  // Frame bundling. Each row is its own BLE write, and on the B1 every write costs a
+  // ~10 ms pace — so a dense page (≈one packet per row) is dominated by the write
+  // COUNT, not the bytes. The protocol is a frame stream and the printer reassembles
+  // it, so several [55 55 … aa aa] frames can ride in one write, as long as the write
+  // stays within the BLE MTU. BUNDLE_MAX = max bytes per write; 0 disables bundling
+  // (one frame per write, the original behavior). Tunable at runtime via Niimbot.
+  // Single 61 B frames already work, so the MTU is ≥ ~64; 240 is safe for MTU ≥ 247.
+  let BUNDLE_MAX = 240;
+  let _bundle = [];      // pending raw frames awaiting a flush
+  let _bundleLen = 0;
+  async function flushBundle() {
+    if (!_bundle.length) return;
+    let out;
+    if (_bundle.length === 1) { out = _bundle[0]; }
+    else {
+      out = new Uint8Array(_bundleLen);
+      let o = 0;
+      for (const f of _bundle) { out.set(f, o); o += f.length; }
+    }
+    _bundle = []; _bundleLen = 0;
+    await writeRaw(out);
+  }
+  // Queue a frame into the current bundle, flushing first if it wouldn't fit. A frame
+  // is never split (max(BUNDLE_MAX, frame.length) keeps an oversized frame whole).
+  async function sendBundled(cmd, data) {
+    logTx(cmd, data);
+    const frame = pack(cmd, data);
+    if (_bundleLen && _bundleLen + frame.length > Math.max(BUNDLE_MAX, frame.length)) await flushBundle();
+    _bundle.push(frame); _bundleLen += frame.length;
+  }
 
   async function sendWait(cmd, data, wantResp, timeoutMs) {
     const wait = new Promise((resolve) => { pending = { cmd: wantResp, resolve }; });
@@ -168,13 +205,14 @@
   }
 
   // ── Bitmap: image → rows packed MSB-first (1 = black) ───────────────────────
-  async function imageToPacked(url, w, h) {
+  async function imageToPacked(url, w, h, offsetY) {
+    const dy = offsetY | 0;   // shift the print down by dy rows (print-position calibration)
     const bmp = await fetch(url).then((r) => r.blob()).then((b) => createImageBitmap(b));
     const canvas = document.createElement("canvas");
     canvas.width = w; canvas.height = h;
     const ctx = canvas.getContext("2d");
     ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, w, h);
-    ctx.drawImage(bmp, 0, 0, w, h);
+    ctx.drawImage(bmp, 0, dy, w, h);   // top dy rows stay white; bottom dy rows fall off the page
     const px = ctx.getImageData(0, 0, w, h).data;
     const stride = (w + 7) >> 3;
     const buf = new Uint8Array(stride * h);
@@ -214,17 +252,18 @@
         run++;
       }
       if (isVoid) {
-        await send(0x84, [(r >> 8) & 0xff, r & 0xff, run]);
+        await sendBundled(0x84, [(r >> 8) & 0xff, r & 0xff, run]);
       } else {
         const total = popcountRow(buf, off, stride);
         const data = new Array(6 + stride);
         data[0] = (r >> 8) & 0xff; data[1] = r & 0xff; data[2] = 0;
         data[3] = total & 0xff; data[4] = (total >> 8) & 0xff; data[5] = run;
         for (let b = 0; b < stride; b++) data[6 + b] = buf[off + b];
-        await send(0x85, data);
+        await sendBundled(0x85, data);
       }
       r += run;
     }
+    await flushBundle();   // push any rows still pending before PageEnd
   }
 
   // ── Job lifecycle (protocol V4) ─────────────────────────────────────────────
@@ -238,10 +277,12 @@
   //   "v4" (D110M / B1 Pro / B21 Pro, protocol 5-ish, 300 dpi): PrintStart 9b
   //         (speed + page count); a single job streams N pages; status-poll paced.
   //   "b1" (B1 / B21 / D11, *protocol 3*, 203 dpi): PrintStart 7b · PageStart [1]
-  //         · SetPageSize 6b [H,W,copies] (cols = full label width, e.g. 400 for a
-  //         50 mm label even though the printhead is 384) · shared total-mode rows
-  //         · PageEnd · shared status-poll + PrintEnd. Byte-for-byte as niimbluelib.
-  //         One full job per label (no cross-label pipelining).
+  //         · SetPageSize 6b [H,W,copies] (cols = printhead width 384, multiple of 8)
+  //         · shared total-mode rows · PageEnd · shared status-poll + PrintEnd.
+  //         Byte-for-byte as niimbluelib's B1PrintTask. Like "v4", a single job
+  //         streams N pages: printStart7b declares N, each PageEnd parks the paper at
+  //         the printhead waiting for the next page, and the lone PrintEnd at the end
+  //         feeds it out — so a batch prints continuously, no retract between labels.
   function isB1(model) { return model && model.task === "b1"; }
 
   async function beginJob(model, totalPages, onProgress) {
@@ -258,19 +299,20 @@
   // Queue one page's data within an open job — does NOT wait for it to print, so
   // the next page can be sent while this one is still printing (keeps the printer
   // buffer primed → no stop between labels).
-  async function sendPagePacked(model, size, buf, stride, onProgress) {
+  async function sendPagePacked(model, size, buf, stride, copies, onProgress) {
     const W = size.w_px, H = size.h_px;
+    const c = Math.max(1, copies | 0);   // printer repeats this page `c` times from one upload
     if (isB1(model)) {
       await sendWait(0x03, [0x01], 0x04, 1000);                             // PageStart (B1 only)
       await sendWait(0x13, [
-        (H >> 8) & 0xff, H & 0xff, (W >> 8) & 0xff, W & 0xff, 0, 1,
-      ], 0x14, 2000);                                                       // SetPageSize 6b (rows, cols, copies=1)
+        (H >> 8) & 0xff, H & 0xff, (W >> 8) & 0xff, W & 0xff, (c >> 8) & 0xff, c & 0xff,
+      ], 0x14, 2000);                                                       // SetPageSize 6b (rows, cols, copies)
     } else {
       await send(0xa3, [0x01]); await sleep(30);                           // PrintStatus (one-way)
       await sendWait(0x13, [
         (H >> 8) & 0xff, H & 0xff, (W >> 8) & 0xff, W & 0xff,
-        0, 1, 0, 0, 0, 0, 0, 0, 0,
-      ], 0x14, 2000);                                                       // SetPageSize 13b (1 copy)
+        (c >> 8) & 0xff, c & 0xff, 0, 0, 0, 0, 0, 0, 0,
+      ], 0x14, 2000);                                                       // SetPageSize 13b (copies)
     }
 
     onProgress && onProgress("sending image…");
@@ -280,12 +322,17 @@
 
   // Poll until the cumulative printed-page counter (0xB3) reaches `target`.
   // Used both to throttle the look-ahead and to drain at end of job.
+  let _lastPage = -1;   // last printed-page counter seen, for the timing trace
   async function waitPage(target, onProgress) {
     onProgress && onProgress("printing…");
     const t0 = Date.now();
     while (Date.now() - t0 < 25000) {
       const st = await getPrintStatus(900);
-      if (st) { onProgress && onProgress(`printing… ${st.print}%`); if (st.page >= target) return; }
+      if (st) {
+        if (st.page !== _lastPage) { tlog(`printer counter → page ${st.page} (print ${st.print}%, feed ${st.feed}%)`); _lastPage = st.page; }
+        onProgress && onProgress(`printing… ${st.print}%`);
+        if (st.page >= target) return;
+      }
       await sleep(150);
     }
   }
@@ -294,23 +341,28 @@
     await sendWait(0xf3, [0x01], 0xf4, 2500);                                // PrintEnd (0xF3)
   }
 
-  // Finalize one label: poll the printed-page counter to 1 (so PrintEnd doesn't
-  // arrive mid-print and cut the label), then PrintEnd. Same for both tasks — the
-  // protocol-3 B1's 0xB3 status carries page in the same bytes (page→1 at 100%).
-  async function finishJob(model, onProgress) {
-    await waitPage(1, onProgress);
+  // Finalize the job: poll the printed-page counter to `target` (so PrintEnd doesn't
+  // arrive mid-print and cut a label), then PrintEnd. `target` = copies for a single
+  // image (printer repeats it), so we wait for all copies before feeding out.
+  async function finishJob(model, target, onProgress) {
+    await waitPage(Math.max(1, target | 0), onProgress);
     await endJob();
   }
 
+  // Print one image, optionally `opts.copies` times. Like niim.blue, copies are
+  // declared once (PrintStart pages + SetPageSize copies) and the image is uploaded
+  // ONCE — the printer repeats it internally, continuously, no re-upload per copy.
   async function printImage(url, opts) {
     opts = opts || {};
     const { model, size, onProgress } = opts;
+    const copies = Math.max(1, opts.copies | 0);
     onProgress && onProgress("connecting…");
     await connect(model);
-    const { buf, stride } = await imageToPacked(url, size.w_px, size.h_px);
-    await beginJob(model, 1, onProgress);
-    await sendPagePacked(model, size, buf, stride, onProgress);
-    await finishJob(model, onProgress);
+    const offsetY = opts.offsetY != null ? opts.offsetY : (size.offset_y_px || 0);
+    const { buf, stride } = await imageToPacked(url, size.w_px, size.h_px, offsetY);
+    await beginJob(model, copies, onProgress);
+    await sendPagePacked(model, size, buf, stride, copies, onProgress);
+    await finishJob(model, copies, onProgress);
     onProgress && onProgress("ok");
   }
 
@@ -327,26 +379,22 @@
     onProgress && onProgress("connecting…");
     await connect(model);
     const N = urls.length;
-    // Protocol-3 B1: no cross-label pipelining — print one full job per label.
-    if (isB1(model)) {
-      for (let i = 0; i < N; i++) {
-        const tag = `label ${i + 1}/${N}`;
-        const { buf, stride } = await imageToPacked(urls[i], size.w_px, size.h_px);
-        await beginJob(model, 1, (s) => onProgress && onProgress(`${tag}: ${s}`));
-        await sendPagePacked(model, size, buf, stride, (s) => onProgress && onProgress(`${tag}: ${s}`));
-        await finishJob(model, (s) => onProgress && onProgress(`${tag}: ${s}`));
-      }
-      onProgress && onProgress("ok");
-      return;
-    }
-    // Single job for the whole batch: pages stream back-to-back, no retract between.
+    const offsetY = opts.offsetY != null ? opts.offsetY : (size.offset_y_px || 0);
+    _t0 = Date.now(); _lastPage = -1;                                       // reset timing trace
+    // Single job for the whole batch (both tasks): pages stream back-to-back, no
+    // retract between. The B1 (protocol 3) supports this natively — printStart7b
+    // with totalPages>1 parks the paper at the printhead after each PageEnd and only
+    // feeds out on the final PrintEnd (verified against niimbluelib's B1PrintTask).
     await beginJob(model, N, onProgress);
+    tlog(`job started (${N} pages)`);
     for (let i = 0; i < N; i++) {
       const tag = `label ${i + 1}/${N}`;
       onProgress && onProgress(`${tag}: sending…`);
-      const { buf, stride } = await imageToPacked(urls[i], size.w_px, size.h_px);
-      await sendPagePacked(model, size, buf, stride,
+      const { buf, stride } = await imageToPacked(urls[i], size.w_px, size.h_px, offsetY);
+      tlog(`page ${i}: start sending`);
+      await sendPagePacked(model, size, buf, stride, 1,
         (s) => onProgress && onProgress(`${tag}: ${s}`));
+      tlog(`page ${i}: buffered (PageEnd acked)`);
       // Send page i, THEN wait for page i-LOOKAHEAD to finish — so the just-sent
       // page is already buffered before the printer needs it (no inter-label stop).
       if (i - LOOKAHEAD >= 0) {
@@ -354,13 +402,16 @@
       }
     }
     await waitPage(N, onProgress);                                          // drain remaining pages
+    tlog(`all ${N} pages printed; sending PrintEnd`);
     await endJob();
+    tlog(`PrintEnd acked (batch done)`);
     onProgress && onProgress("ok");
   }
 
   root.Niimbot = {
     VERSION, SVC_UUID, CHAR_UUID,
     get DEBUG() { return DEBUG; }, set DEBUG(v) { DEBUG = !!v; },
+    get BUNDLE_MAX() { return BUNDLE_MAX; }, set BUNDLE_MAX(v) { BUNDLE_MAX = Math.max(0, v | 0); },
     isSupported: () => !!navigator.bluetooth,
     connect, printImage, printBatch,
   };
