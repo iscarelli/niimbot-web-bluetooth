@@ -154,6 +154,17 @@ offers sizes matching the selected model's dpi — mirroring the selection rules
 Buttons cover a single label, 3 identical copies (one upload), a 3-label batch
 (distinct), and dense stress tests.
 
+## Troubleshooting
+
+| Symptom | Cause / fix |
+|---|---|
+| **macOS: print comes out blank but progress hits 100%** | macOS CoreBluetooth drops unacked write bursts. The driver already paces writes on macOS; if it still happens, raise the gap: `Niimbot.PACE_MS = 16` (or higher). |
+| **Error `"Connected printer is X … select Y"`** | The selected model doesn't match the connected printer. Pick the model the driver detected (`Niimbot.printer`), or use *Connect & identify* in the demo. |
+| **Dense / image-heavy labels are slow or stall between labels** | This is BLE throughput on worst-case content. Tune `Niimbot.BUNDLE_MAX` (frames per write) and `Niimbot.PACE_MS` (gap). Real labels (text/codes, mostly white) stream fine; for N identical labels use `copies` (one upload). |
+| **Printer never starts / `PageEnd` never acks (B1, 203 dpi)** | An unacked burst dropped rows. Keep `Niimbot.PACE_MS` ≥ 10 for the B1. |
+| **`Niimbot.isSupported()` is false** | You're on Firefox/Safari, or not on HTTPS/localhost. Use Chrome/Edge over HTTPS. |
+| **Nothing prints, no error** | Open the console and set `Niimbot.DEBUG = true` to see the BLE packets + per-batch timing trace, then check where it stalls. |
+
 ## Credits
 
 Protocol reverse-engineered and validated on the B1 Pro. External community
