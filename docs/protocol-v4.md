@@ -5,6 +5,10 @@ Reverse-engineered and validated in the lab on the **Niimbot B1 Pro** and the
 (D110_M / D11_H / B1 Pro / B21 Pro, 300 dpi) and `b1` (B1 / B21 / D11, **protocol
 version 3**, 203 dpi). See [Print task variants](#print-task-variants-v4-vs-b1).
 
+> **Validated:** only the **B1 Pro** (`v4`) and **B1** (`b1`) are tested on real
+> hardware. The other models listed per family share the protocol and should work,
+> but are **untested** — treat their parameters as a starting point.
+
 ## Transport (Web Bluetooth / BLE GATT)
 
 | Item | Value |
