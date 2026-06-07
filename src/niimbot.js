@@ -179,6 +179,7 @@
     4096: { label: "Niimbot B1",     task: "b1", dpi: 203, printhead: 384 },
     4097: { label: "Niimbot B1 Pro", task: "v4", dpi: 300, printhead: 567 },
     4098: { label: "Niimbot B1 SE",  task: "b1", dpi: 203, printhead: 384 },
+    4608: { label: "Niimbot M2-H",   task: "b1", dpi: 300, printhead: 567 },   // untested — same b1 task as B1, 300 dpi
   };
   let printerInfo = null;   // { modelId, protocolVersion, label, task, dpi } after connect
 
