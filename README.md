@@ -20,6 +20,17 @@ and **M2-H**). Two print-task variants over the same frame cover the
 Open it in **Chrome/Edge**, click *Connect & identify printer*, and print a test
 label. (Web Bluetooth needs HTTPS — the live demo and `localhost` both qualify.)
 
+<p align="center">
+  <img src="https://raw.githubusercontent.com/iscarelli/niimbot-web-bluetooth/main/docs/demo.gif"
+       alt="Pairing a Niimbot printer and printing a label from the browser demo" width="640">
+</p>
+
+<!-- TODO: record docs/demo.gif (~8–12 s, ≤640 px wide, a few MB): open the live demo,
+     click "Connect & identify printer", pick the printer, print a label. Tools: ScreenToGif
+     (Windows) or a screen recording → gif. Commit it at docs/demo.gif and this image renders
+     on GitHub and npm. Until then the image above shows a broken-link icon. -->
+
+
 ## Contents
 
 | Path | What it is |

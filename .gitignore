@@ -10,3 +10,6 @@ Thumbs.db
 __pycache__/
 *.pyc
 .venv/
+
+# Source recordings for docs/demo.gif (the gif itself is committed)
+*.mp4
