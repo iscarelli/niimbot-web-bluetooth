@@ -44,12 +44,22 @@ The app picks the printer by passing a **`model`** and **`size`** object (both f
   (384×240 @ 203 dpi) than on the B1 Pro (584×354 @ 300 dpi) — always pair a size with
   a model of the **same dpi**.
 
-> ⚠️ The B1 and B1 Pro both advertise as `B1…`, so the Bluetooth name **cannot**
-> tell them apart — the *user* must pick the correct model (and matching dpi size).
-> Picking the wrong one prints at the wrong resolution.
+**Auto-identification.** The B1 and B1 Pro advertise the same BLE name (`B1…`), but
+the driver **does identify which is which**: on connect it asks the printer for its
+model id (`PrinterInfo 0x40[08]`) and protocol version (`PrinterStatusData 0xA5`) —
+exactly how niim.blue tells them apart — and exposes it as **`Niimbot.printer`**
+(`{ modelId, protocolVersion, label, task, dpi }`). Validated ids: **B1 = 4096**,
+**B1 Pro = 4097**. Two safeguards follow:
 
-On the first `printImage`/`printBatch` the browser shows its Bluetooth chooser
-(filtered by `name_prefixes`); the user selects the physical printer and pairs once.
+- **`Niimbot.identify(model)`** connects and returns that info *without* printing, so
+  the app can auto-select the right model/size (the demo does this — match `model.id`
+  in `registry.json` to `Niimbot.printer.modelId`).
+- If you call `printImage`/`printBatch` with a model/size whose `task` or `dpi`
+  doesn't match the connected printer, the driver **throws** before printing (naming
+  the detected model) instead of printing at the wrong resolution.
+
+On the first connect the browser shows its Bluetooth chooser (filtered by
+`name_prefixes`); the user selects the physical printer and pairs once.
 
 ## Quick start
 
@@ -88,6 +98,9 @@ The image must be exactly `w_px × h_px`. The driver thresholds it to 1-bit
   **`offsetY`** overrides `size.offset_y_px` to nudge the print down (px, feed axis).
 - `Niimbot.printBatch([url1, url2, …], { model, size, onProgress })` — N *distinct*
   labels in one continuous job (one upload each, streamed back-to-back, no retract).
+- `Niimbot.identify(model)` → connect and return `Niimbot.printer` without printing.
+- `Niimbot.printer` → detected `{ modelId, protocolVersion, label, task, dpi }` (or
+  `null` before connecting). Used to tell a B1 from a B1 Pro (same BLE name).
 - `Niimbot.isSupported()` → `false` on Firefox/Safari (no Web Bluetooth).
 - `Niimbot.DEBUG = true` — log BLE packets + a per-batch timing trace to the console.
 - `Niimbot.BUNDLE_MAX` — bytes per BLE write for frame bundling (default 240; `0`

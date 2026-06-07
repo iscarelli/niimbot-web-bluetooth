@@ -31,7 +31,7 @@
 (function (root) {
   "use strict";
 
-  const VERSION = "b1-proto3-bundle-1";   // bump on each change so the console proves fresh JS loaded
+  const VERSION = "1.2.0";   // shown in the demo/console; bump on each release (or dev change)
   const SVC_UUID = "e7810a71-73ae-499d-8c15-faa9aef0c3f2";
   const CHAR_UUID = "bef8d6c9-9c21-4c9e-b632-bd58c1009f9f";
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -168,6 +168,56 @@
     return { page: (r.data[0] << 8) | r.data[1], print: r.data[2], feed: r.data[3] };
   }
 
+  // ── Printer identification ──────────────────────────────────────────────────
+  // The B1 and B1 Pro advertise the SAME BLE name ("B1…"), so the name can't tell
+  // them apart. niim.blue asks the printer for its model id (PrinterInfo 0x40[08] →
+  // 0x48, big-endian u16) and protocol version (PrinterStatusData 0xA5 → 0xB5, bytes
+  // [11]*100+[12]), then picks the print task from that. We do the same to validate
+  // the caller's selection. Validated ids: B1 (4096), B1 Pro (4097); the B1 SE (4098)
+  // shares the b1 task. Other models exist but are untested → reported, not enforced.
+  const MODEL_IDS = {
+    4096: { label: "Niimbot B1",     task: "b1", dpi: 203, printhead: 384 },
+    4097: { label: "Niimbot B1 Pro", task: "v4", dpi: 300, printhead: 567 },
+    4098: { label: "Niimbot B1 SE",  task: "b1", dpi: 203, printhead: 384 },
+  };
+  let printerInfo = null;   // { modelId, protocolVersion, label, task, dpi } after connect
+
+  async function detectPrinter() {
+    printerInfo = null;
+    let modelId = null, protocolVersion = null;
+    const s = await sendWait(0xa5, [0x01], 0xb5, 1000);            // PrinterStatusData (order as niim.blue)
+    if (s && s.data.length >= 13) {
+      const n = s.data[11] * 100 + s.data[12];
+      protocolVersion = (n >= 204 && n < 300) ? 3 : (n >= 302 ? 5 : (n >= 300 ? 4 : 0));
+    }
+    const r = await sendWait(0x40, [0x08], 0x48, 1000);           // PrinterModelId
+    if (r && r.data.length >= 1) {
+      modelId = r.data.length >= 2 ? ((r.data[0] << 8) | r.data[1]) : (r.data[0] << 8);
+    }
+    const meta = (modelId != null && MODEL_IDS[modelId]) || null;
+    printerInfo = {
+      modelId, protocolVersion,
+      label: meta ? meta.label : (modelId != null ? `unknown (id ${modelId})` : "unknown"),
+      task: meta ? meta.task : null,
+      dpi: meta ? meta.dpi : null,
+    };
+    logMsg(`identified ${printerInfo.label} (id=${modelId}, proto=${protocolVersion}, task=${printerInfo.task || "?"})`);
+    return printerInfo;
+  }
+
+  // Throw a clear, actionable error when the selected model/size doesn't match the
+  // connected printer — stops a wrong-resolution print before it starts. No-op for an
+  // unidentified printer (trust the caller). Called after connect, before printing.
+  function assertSelection(model, size) {
+    if (!printerInfo || printerInfo.task == null) return;
+    if (model && model.task && model.task !== printerInfo.task) {
+      throw new Error(`Connected printer is ${printerInfo.label} (task "${printerInfo.task}", ${printerInfo.dpi} dpi), but the selected model uses task "${model.task}". Select the ${printerInfo.label} model (and a matching label size).`);
+    }
+    if (size && size.dpi != null && printerInfo.dpi != null && size.dpi !== printerInfo.dpi) {
+      throw new Error(`Selected label size is ${size.dpi} dpi but ${printerInfo.label} prints at ${printerInfo.dpi} dpi. Pick a ${printerInfo.dpi} dpi size.`);
+    }
+  }
+
   async function connect(model) {
     if (characteristic && device && device.gatt.connected) return;
     logMsg(`Niimbot ${VERSION} — connecting (task=${(model && model.task) || "?"})`);
@@ -179,16 +229,32 @@
     const server = await device.gatt.connect();
     const svc = await server.getPrimaryService(SVC_UUID);
     characteristic = await svc.getCharacteristic(CHAR_UUID);
-    const p = characteristic.properties || {};
-    writeMode = isB1(model) ? (p.write ? "acked" : "paced") : "fast";   // flow-control the B1 burst
-    logMsg(`char props: write=${!!p.write} writeNoResp=${!!p.writeWithoutResponse} → writeMode=${writeMode}`);
+    const props = characteristic.properties || {};
+    writeMode = "fast";   // safe default for the tiny connect/detect packets; set per task below
+    logMsg(`char props: write=${!!props.write} writeNoResp=${!!props.writeWithoutResponse}`);
     await characteristic.startNotifications();
     characteristic.addEventListener("characteristicvaluechanged", onNotify);
     device.addEventListener("gattserverdisconnected", () => { characteristic = null; });
     // Initial connection packet (raw, 0x03 prefix — same as niimblue).
     await writeRaw(new Uint8Array([0x03, 0x55, 0x55, 0xc1, 0x01, 0x01, 0xc1, 0xaa, 0xaa]));
     await sleep(200);
-    if (isB1(model)) await b1Handshake();
+    await detectPrinter();                 // identify B1 vs B1 Pro (same BLE name)
+    // Flow control + arming follow the ACTUAL printer (detected), falling back to the
+    // caller's pick when unidentified — so an identify-then-print flow (or a wrong
+    // pick) still paces and arms a real B1 correctly.
+    const task = (printerInfo && printerInfo.task) || (model && model.task);
+    writeMode = (task === "b1") ? (props.write ? "acked" : "paced") : "fast";
+    logMsg(`writeMode=${writeMode} (task=${task || "?"})`);
+    if (task === "b1") await b1Handshake();
+  }
+
+  // Drop the BLE connection so a different printer can be paired/identified. Clears
+  // all connection state (incl. the detected printerInfo); the next print reconnects.
+  async function disconnect() {
+    try { if (device && device.gatt && device.gatt.connected) device.gatt.disconnect(); }
+    catch (e) { /* already gone */ }
+    characteristic = null; device = null; pending = null; lastUnsolicited = null; printerInfo = null;
+    logMsg("disconnected");
   }
 
   // The protocol-3 B1 will accept all the setup commands but never actually start
@@ -358,6 +424,7 @@
     const copies = Math.max(1, opts.copies | 0);
     onProgress && onProgress("connecting…");
     await connect(model);
+    assertSelection(model, size);
     const offsetY = opts.offsetY != null ? opts.offsetY : (size.offset_y_px || 0);
     const { buf, stride } = await imageToPacked(url, size.w_px, size.h_px, offsetY);
     await beginJob(model, copies, onProgress);
@@ -378,6 +445,7 @@
     const { model, size, onProgress } = opts;
     onProgress && onProgress("connecting…");
     await connect(model);
+    assertSelection(model, size);
     const N = urls.length;
     const offsetY = opts.offsetY != null ? opts.offsetY : (size.offset_y_px || 0);
     _t0 = Date.now(); _lastPage = -1;                                       // reset timing trace
@@ -412,7 +480,11 @@
     VERSION, SVC_UUID, CHAR_UUID,
     get DEBUG() { return DEBUG; }, set DEBUG(v) { DEBUG = !!v; },
     get BUNDLE_MAX() { return BUNDLE_MAX; }, set BUNDLE_MAX(v) { BUNDLE_MAX = Math.max(0, v | 0); },
+    get printer() { return printerInfo; },   // { modelId, protocolVersion, label, task, dpi } after connect
     isSupported: () => !!navigator.bluetooth,
-    connect, printImage, printBatch,
+    // Connect and identify the printer (model id + protocol) without printing — the
+    // app can read the returned info to auto-select the right model/size.
+    identify: async (model) => { await connect(model); return printerInfo; },
+    connect, disconnect, printImage, printBatch,
   };
 })(typeof window !== "undefined" ? window : globalThis);

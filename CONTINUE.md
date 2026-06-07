@@ -1,7 +1,7 @@
 # Continuation notes — Niimbot B1 work
 
 > Working copy of the session memory, kept in-repo so it travels across machines.
-> Branch: **`feat/niimbot-b1`** (pushed, **not released** — no tag yet).
+> Merged to **main** and released as **v1.2.0**.
 
 ## Status (2026-06-07) — B1 complete, validated on real hardware
 
@@ -10,6 +10,19 @@ driver, alongside the already-validated **B1 Pro** (`v4`). Additive — the B1 P
 is untouched. All cases print **continuously** on real B1 hardware: single label,
 N copies, and N distinct labels. Speed matches niim.blue (and beats it on worst-case
 content, thanks to frame bundling).
+
+**Model auto-identification** (B1 and B1 Pro share the BLE name): `connect()` reads
+the model id (`0x40[08]`→`0x48`, BE u16: B1=4096, B1 Pro=4097) and protocol version
+(`0xA5`→`0xB5`), exposes `Niimbot.printer`, and `assertSelection()` refuses to print
+on a task/dpi mismatch. `Niimbot.identify(model)` returns it without printing;
+`Niimbot.disconnect()` drops the link to pair another. writeMode + handshake follow
+the **detected** model, so an identify-then-print (or wrong pick) still arms a real B1.
+
+## Next (tracked in Vikunja)
+- **Compatibilizar D110, D11_H e M2_H** — add these models (D110 = its own niimbluelib
+  print task; D11_H = `v4`/D110M_V4; M2_H = `b1`). Needs ids + task wiring + testing.
+- **Implementar status de material** — surface paper/label and RFID/consumable status
+  (heartbeat `0xDC`→`0xD9` carries lid/paper flags; `RfidInfo 0x1A`→`0x1B`).
 
 What the B1 needs that the B1 Pro doesn't (full detail in `docs/protocol-v4.md`):
 - **Post-connect handshake** (`PrinterStatusData 0xA5`, `PrinterInfo 0x40`×8,

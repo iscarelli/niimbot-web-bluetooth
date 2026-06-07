@@ -27,6 +27,8 @@
     <label>Text: <input id="text" value="NIIMBOT TEST" size="16"></label>
   </div>
 
+  <button id="identify">Connect &amp; identify printer</button>
+  <button id="disconnect">Disconnect</button>
   <button id="print">Connect and print</button>
   <button id="print3copies">Print 3 copies (1 upload)</button>
   <button id="print3">Print 3-label batch</button>
@@ -134,6 +136,41 @@
     $("size").addEventListener("change", refresh);
     $("text").addEventListener("input", refresh);
     refresh();
+
+    // Connect and ask the printer which model it is (B1 and B1 Pro share the BLE
+    // name), then auto-select the matching registry model + size — like niim.blue.
+    $("identify").addEventListener("click", async () => {
+      $("identify").disabled = true;
+      try {
+        status("connecting…");
+        // name_prefixes is shared across B1 models, so any model works as the filter.
+        const info = await Niimbot.identify(reg.models[$("model").value]);
+        let matched = null;
+        for (const [k, m] of Object.entries(reg.models)) if (m.id === info.modelId) matched = k;
+        if (matched) {
+          $("model").value = matched;
+          populateSizes();
+          refresh();
+          status(`Identified: ${info.label} — id ${info.modelId}, protocol v${info.protocolVersion}. Model "${matched}" selected.`);
+        } else {
+          status(`Identified: ${info.label} (id ${info.modelId}, protocol v${info.protocolVersion}). No matching model in registry — selection left as is.`);
+        }
+      } catch (e) {
+        status("error: " + (e && e.message || e));
+      } finally {
+        $("identify").disabled = false;
+      }
+    });
+
+    // Drop the connection so you can pair a different printer (e.g. switch B1 ↔ B1 Pro).
+    $("disconnect").addEventListener("click", async () => {
+      try {
+        await Niimbot.disconnect();
+        status("disconnected — pick a printer and identify again.");
+      } catch (e) {
+        status("error: " + (e && e.message || e));
+      }
+    });
 
     $("print").addEventListener("click", async () => {
       const model = reg.models[$("model").value];

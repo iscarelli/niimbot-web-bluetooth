@@ -3,6 +3,7 @@
   "models": {
     "b1pro": {
       "label": "Niimbot B1 Pro",
+      "id": 4097,
       "dpi": 300,
       "protocol": "v4",
       "task": "v4",
@@ -13,6 +14,7 @@
     },
     "b1": {
       "label": "Niimbot B1",
+      "id": 4096,
       "dpi": 203,
       "protocol": "v4",
       "task": "b1",

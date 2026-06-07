@@ -139,6 +139,28 @@ end. This is what niim.blue does for a multi-copy job — the bitmap crosses BLE
 once, so it is far faster than re-sending the image per label. Different labels still
 need one upload each (a page per distinct image, all within the one job).
 
+## Identifying the connected model
+
+The B1 and B1 Pro advertise the **same** BLE name (`B1…`), so the name can't tell
+them apart. The printer reports its identity, though — query it right after connect
+(this is how niim.blue picks the print task):
+
+```
+PrinterStatusData(0xA5,[1]) -> 0xB5   # protocol version = data[11]*100 + data[12]:
+                                      #   204–299 → 3, 300–301 → 4, ≥302 → 5
+PrinterInfo(0x40,[08])      -> 0x48   # model id, big-endian u16 (1-byte resp → byte<<8)
+```
+
+| Model id | dec | Model | Protocol | task | dpi | printhead px |
+|---|---|---|---|---|---|---|
+| `0x1000` | 4096 | **B1** | 3 | `b1` | 203 | 384 |
+| `0x1001` | 4097 | **B1 Pro** | 5 | `v4` | 300 | 567 |
+| `0x1002` | 4098 | B1 SE | 3 | `b1` | 203 | 384 |
+
+(Model ids match niimbluelib's table; only B1 and B1 Pro are validated here.) The
+driver runs this on `connect()`, exposes it as `Niimbot.printer`, and refuses to print
+when the selected `task`/`dpi` doesn't match the connected printer.
+
 ## Label geometry
 
 300 dpi ≈ 11.81 px/mm; 203 dpi = 8 px/mm. `SetPageSize` takes `H` (rows, feed
