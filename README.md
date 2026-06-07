@@ -156,15 +156,14 @@ Buttons cover a single label, 3 identical copies (one upload), a 3-label batch
 
 ## Real-world use
 
-The driver running inside a real application, printing actual labels over Web
-Bluetooth — not just the test pattern:
+Used in **[spool-control](https://github.com/iscarelli/spool-control)** — a web app for
+managing 3D-printing filament spools — to print spool labels straight from the browser,
+no app:
 
 <p align="center">
   <img src="https://raw.githubusercontent.com/iscarelli/niimbot-web-bluetooth/main/docs/real.gif"
-       alt="The driver printing real labels from a production web app" width="560">
+       alt="The niimbot-web-bluetooth driver printing filament-spool labels inside the spool-control web app" width="560">
 </p>
-
-<!-- Tip: edit this caption to name the app / use case for stronger social proof. -->
 
 ## Troubleshooting
 
