@@ -6,6 +6,16 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+## [1.3.4] - 2026-06-07
+### Fixed
+- **macOS:** dense/batch prints came out **blank** on the B1 Pro (and other "fast"
+  models) while still reporting 100% — macOS CoreBluetooth silently drops the unacked
+  `writeValueWithoutResponse` bursts that Windows tolerates, so the image rows never
+  arrived (control packets use waited writes, so progress still advanced). On macOS the
+  driver now paces the "fast" models too (one frame per write + a gap).
+### Added
+- `Niimbot.PACE_MS` — runtime-tunable gap (ms) between unacked writes (default 10).
+
 ## [1.3.3] - 2026-06-07
 ### Fixed
 - **B1 Pro regression:** dense/stress batches showed "printing" but nothing came out.
@@ -63,7 +73,8 @@ All notable changes to this project are documented here. The format is based on
   (`v4`, 300 dpi), reverse-engineered protocol V4 documentation, and a standalone demo.
 - Multi-label batches print as one continuous job (no stop/retract between labels).
 
-[Unreleased]: https://github.com/iscarelli/niimbot-web-bluetooth/compare/v1.3.3...HEAD
+[Unreleased]: https://github.com/iscarelli/niimbot-web-bluetooth/compare/v1.3.4...HEAD
+[1.3.4]: https://github.com/iscarelli/niimbot-web-bluetooth/compare/v1.3.3...v1.3.4
 [1.3.3]: https://github.com/iscarelli/niimbot-web-bluetooth/compare/v1.3.2...v1.3.3
 [1.3.2]: https://github.com/iscarelli/niimbot-web-bluetooth/compare/v1.3.1...v1.3.2
 [1.3.1]: https://github.com/iscarelli/niimbot-web-bluetooth/compare/v1.3.0...v1.3.1

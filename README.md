@@ -131,6 +131,9 @@ The image must be exactly `w_px × h_px`. The driver thresholds it to 1-bit
 - `Niimbot.DEBUG = true` — log BLE packets + a per-batch timing trace to the console.
 - `Niimbot.BUNDLE_MAX` — bytes per BLE write for frame bundling (default 240; `0`
   disables). Bundling cuts the paced-write count so dense pages stream without stalls.
+- `Niimbot.PACE_MS` — gap (ms) between unacked writes (default 10). **macOS** drops
+  unacked write bursts, so there the driver paces every model; lower this only if your
+  printer tolerates a smaller gap.
 
 ## Requirements
 
