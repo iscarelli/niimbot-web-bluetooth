@@ -31,7 +31,7 @@
 (function (root) {
   "use strict";
 
-  const VERSION = "1.3.2";   // shown in the demo/console; bump on each release (or dev change)
+  const VERSION = "1.3.3";   // shown in the demo/console; bump on each release (or dev change)
   const SVC_UUID = "e7810a71-73ae-499d-8c15-faa9aef0c3f2";
   const CHAR_UUID = "bef8d6c9-9c21-4c9e-b632-bd58c1009f9f";
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -125,6 +125,7 @@
   // (one frame per write, the original behavior). Tunable at runtime via Niimbot.
   // Single 61 B frames already work, so the MTU is ≥ ~64; 240 is safe for MTU ≥ 247.
   let BUNDLE_MAX = 240;
+  let _bundleAllowed = false;   // set per connected model (see MODEL_IDS `bundle`)
   let _bundle = [];      // pending raw frames awaiting a flush
   let _bundleLen = 0;
   async function flushBundle() {
@@ -144,7 +145,8 @@
   async function sendBundled(cmd, data) {
     logTx(cmd, data);
     const frame = pack(cmd, data);
-    if (_bundleLen && _bundleLen + frame.length > Math.max(BUNDLE_MAX, frame.length)) await flushBundle();
+    const max = _bundleAllowed ? BUNDLE_MAX : 0;   // 0 → one frame per write (B1 Pro, unknown models)
+    if (_bundleLen && _bundleLen + frame.length > Math.max(max, frame.length)) await flushBundle();
     _bundle.push(frame); _bundleLen += frame.length;
   }
 
@@ -182,11 +184,15 @@
   // model-level printhead figure isn't needed here and is omitted to avoid confusing
   // it with label width (e.g. B1 Pro 50×30 renders at 584 px though its printhead is
   // 567 px). niimbluelib has the printhead resolutions if ever needed.
+  // `paced` = needs the ~10 ms gap between unacked row writes (the 203 dpi B1 drops
+  // rows on a full-speed burst). `bundle` = tolerates several row frames per BLE write
+  // (frame bundling) — only enabled where validated; the B1 Pro garbles/stalls on
+  // bundled writes, so it stays one-frame-per-write. Both are per-MODEL, not per-task.
   const MODEL_IDS = {
-    4096: { label: "Niimbot B1",     task: "b1", dpi: 203, paced: true },
-    4097: { label: "Niimbot B1 Pro", task: "v4", dpi: 300, paced: false },
-    4098: { label: "Niimbot B1 SE",  task: "b1", dpi: 203, paced: true },
-    4608: { label: "Niimbot M2-H",   task: "b1", dpi: 300, paced: false },  // B1-Pro-class: b1 command sequence (per niimbluelib; v4 tested no better) + fast writes
+    4096: { label: "Niimbot B1",     task: "b1", dpi: 203, paced: true,  bundle: true },
+    4097: { label: "Niimbot B1 Pro", task: "v4", dpi: 300, paced: false, bundle: false },
+    4098: { label: "Niimbot B1 SE",  task: "b1", dpi: 203, paced: true,  bundle: false },
+    4608: { label: "Niimbot M2-H",   task: "b1", dpi: 300, paced: false, bundle: true },  // B1-Pro-class: b1 command sequence (per niimbluelib; v4 tested no better) + fast writes
   };
   let printerInfo = null;   // { modelId, protocolVersion, label, task, dpi } after connect
 
@@ -264,7 +270,8 @@
     // writes unless writeNoResponse is unavailable.
     const needsPacing = meta ? !!meta.paced : (task === "b1");
     writeMode = needsPacing ? (props.writeWithoutResponse ? "paced" : "acked") : "fast";
-    logMsg(`writeMode=${writeMode} (task=${task || "?"}, model=${(meta && meta.label) || "?"}, write=${!!props.write}, writeNoResp=${!!props.writeWithoutResponse})`);
+    _bundleAllowed = !!(meta && meta.bundle);   // only bundle frames where validated (B1, M2-H)
+    logMsg(`writeMode=${writeMode} bundle=${_bundleAllowed} (task=${task || "?"}, model=${(meta && meta.label) || "?"}, write=${!!props.write}, writeNoResp=${!!props.writeWithoutResponse})`);
     if (task === "b1") await b1Handshake();
   }
 

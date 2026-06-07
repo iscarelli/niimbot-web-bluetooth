@@ -6,6 +6,15 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+## [1.3.3] - 2026-06-07
+### Fixed
+- **B1 Pro regression:** dense/stress batches showed "printing" but nothing came out.
+  Frame bundling (added in 1.2.0, validated only on the B1 and M2-H) is not tolerated
+  by the B1 Pro. Bundling is now **per-model** (`MODEL_IDS.bundle`), enabled only where
+  validated; the B1 Pro (and unidentified models) revert to one frame per BLE write.
+### Added
+- README demo GIF.
+
 ## [1.3.2] - 2026-06-07
 ### Removed
 - Dropped the unused `printhead` field from the `MODEL_IDS` table in `src/niimbot.js`.
@@ -54,7 +63,8 @@ All notable changes to this project are documented here. The format is based on
   (`v4`, 300 dpi), reverse-engineered protocol V4 documentation, and a standalone demo.
 - Multi-label batches print as one continuous job (no stop/retract between labels).
 
-[Unreleased]: https://github.com/iscarelli/niimbot-web-bluetooth/compare/v1.3.2...HEAD
+[Unreleased]: https://github.com/iscarelli/niimbot-web-bluetooth/compare/v1.3.3...HEAD
+[1.3.3]: https://github.com/iscarelli/niimbot-web-bluetooth/compare/v1.3.2...v1.3.3
 [1.3.2]: https://github.com/iscarelli/niimbot-web-bluetooth/compare/v1.3.1...v1.3.2
 [1.3.1]: https://github.com/iscarelli/niimbot-web-bluetooth/compare/v1.3.0...v1.3.1
 [1.3.0]: https://github.com/iscarelli/niimbot-web-bluetooth/compare/v1.2.0...v1.3.0
