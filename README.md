@@ -127,7 +127,8 @@ The image must be exactly `w_px × h_px`. The driver thresholds it to 1-bit
 - `Niimbot.identify(model)` → connect and return `Niimbot.printer` without printing.
 - `Niimbot.printer` → detected `{ modelId, protocolVersion, label, task, dpi }` (or
   `null` before connecting). Used to tell a B1 from a B1 Pro (same BLE name).
-- `Niimbot.isSupported()` → `false` on Firefox/Safari (no Web Bluetooth).
+- `Niimbot.isSupported()` → whether `navigator.bluetooth` exists. `false` on Firefox
+  and on Safari; `true` inside an iOS browser that polyfills it (see *Requirements*).
 - `Niimbot.DEBUG = true` — log BLE packets + a per-batch timing trace to the console.
 - `Niimbot.BUNDLE_MAX` — bytes per BLE write for frame bundling (default 240; `0`
   disables). Bundling cuts the paced-write count so dense pages stream without stalls.
@@ -137,8 +138,35 @@ The image must be exactly `w_px × h_px`. The driver thresholds it to 1-bit
 
 ## Requirements
 
-**Chrome/Edge** (Chromium) over **HTTPS** or `localhost`. Web Bluetooth does not
-exist on Firefox/Safari.
+Any browser with **Web Bluetooth**, over **HTTPS** or `localhost`. Firefox has no
+Web Bluetooth on any platform.
+
+| Platform | What works |
+|---|---|
+| **Desktop** (Windows, macOS, Linux, ChromeOS) | Chrome / Edge / Opera — native. |
+| **Android** | Chrome, Edge, Opera, Samsung Internet — native. Bluetooth **and location** must be on, or the device chooser opens empty (Android ties BLE scanning to location). Open the page in Chrome itself: an in-app WebView (opening the link from inside a chat app) may not expose Web Bluetooth. |
+| **iOS / iPadOS** | Safari has none and [Apple has no plan to add it](https://github.com/WebBluetoothCG/web-bluetooth/blob/main/implementation-status.md) — and every iOS browser is WebKit, so Chrome/Edge for iPhone don't have it either. Use a browser that polyfills `navigator.bluetooth` over CoreBluetooth: **[Bluefy](https://apps.apple.com/us/app/bluefy-web-ble-browser/id1492822055)** (free) or WebBLE. |
+
+### iOS coverage — what has actually been tried
+
+Printing from an iPhone works, but the testing behind that sentence is narrow, so
+here is its exact extent rather than a blanket claim:
+
+- **Validated:** B1 Pro, one single label, via Bluefy (2026-08-11). The polyfill
+  covers everything the driver needs — `namePrefix` filters, GATT, notifications
+  and `writeValueWithoutResponse`.
+- **Not tried: dense / multi-label pages on iOS.** The B1 Pro streams unpaced
+  (`writeMode="fast"`), and on **macOS** that same unpaced burst prints a *blank*
+  page while reporting 100% — a failure a single label never reveals. iOS is
+  CoreBluetooth too, so the risk is open. Note there is **no runtime workaround**
+  if it bites: `Niimbot.PACE_MS` only applies in `"paced"` mode
+  (`src/niimbot.js:116`) and the mode isn't settable from outside, so forcing
+  pacing on iPhone means widening the `IS_MAC` check at `src/niimbot.js:104` —
+  it is `false` on iPhone, where `navigator.platform` is `"iPhone"`.
+- **Not tried: B1 and M2-H on iOS.** These are the models that bundle frames
+  (`BUNDLE_MAX = 240`, `src/niimbot.js:132`), and CoreBluetooth commonly caps an
+  unacked write near 182 bytes — an oversized write can be truncated silently.
+  If a page comes out incomplete on those, try `Niimbot.BUNDLE_MAX = 180`.
 
 ## Demo
 
@@ -173,7 +201,9 @@ no app:
 | **Error `"Connected printer is X … select Y"`** | The selected model doesn't match the connected printer. Pick the model the driver detected (`Niimbot.printer`), or use *Connect & identify* in the demo. |
 | **Dense / image-heavy labels are slow or stall between labels** | This is BLE throughput on worst-case content. Tune `Niimbot.BUNDLE_MAX` (frames per write) and `Niimbot.PACE_MS` (gap). Real labels (text/codes, mostly white) stream fine; for N identical labels use `copies` (one upload). |
 | **Printer never starts / `PageEnd` never acks (B1, 203 dpi)** | An unacked burst dropped rows. Keep `Niimbot.PACE_MS` ≥ 10 for the B1. |
-| **`Niimbot.isSupported()` is false** | You're on Firefox/Safari, or not on HTTPS/localhost. Use Chrome/Edge over HTTPS. |
+| **`Niimbot.isSupported()` is false** | Firefox (no Web Bluetooth anywhere), Safari (see the iPhone row), an in-app WebView, or you're not on HTTPS/localhost. |
+| **iPhone: the connect button does nothing / not supported** | Safari has no Web Bluetooth. Open the page in **Bluefy** instead — validated on the B1 Pro (see *Requirements*). |
+| **Android: the device chooser opens with no printers** | Location services must be on, not just Bluetooth — Android gates BLE scanning behind location. It is not a pairing problem. |
 | **Nothing prints, no error** | Open the console and set `Niimbot.DEBUG = true` to see the BLE packets + per-batch timing trace, then check where it stalls. |
 
 ## Credits
