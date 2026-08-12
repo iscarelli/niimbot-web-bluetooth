@@ -8,6 +8,10 @@ version 3**, 203 dpi). See [Print task variants](#print-task-variants-v4-vs-b1).
 > **Validated:** the **B1** (`b1`), **B1 Pro** (`v4`) and **M2-H** (`b1`, 300 dpi) are
 > tested on real hardware. The other models listed per family share the protocol and
 > should work, but are **untested** — treat their parameters as a starting point.
+>
+> **One section is not validated at all:** [Consumable status](#consumable-status)
+> (the `0xDC`/`0x1A` response layouts) is transcribed from niimbluelib and has
+> **never been seen on a printer here**. It is flagged again in place.
 
 ## Transport (Web Bluetooth / BLE GATT)
 
@@ -40,7 +44,8 @@ Responses arrive via NOTIFY in the same frame (`0x55 0x55 cmd len ... crc 0xAA 0
 | `0xC1` | Connect | `0xC2` | sent raw with a `03` prefix: `03 55 55 C1 01 01 C1 AA AA`. Resp data = `[connectResult]` |
 | `0xA5` | PrinterStatusData | `0xB5` | data = `[1]`. **`b1` handshake** (see below) |
 | `0x40` | PrinterInfo | `0x48`,`0x4B`,`0x4D`,`0x4A`,`0x47`,`0x43`,`0x4C`,`0x49` | data = `[sub]`. **`b1` handshake** — one query per sub-code |
-| `0xDC` | Heartbeat | `0xD9` | data = `[04]`. **`b1` handshake** |
+| `0xDC` | Heartbeat | `0xD9` | data = `[type]`; `04` = "advanced 2". **`b1` handshake**; also read by `getStatus()` — see [Consumable status](#consumable-status) |
+| `0x1A` | RfidInfo | `0x1B` | data = `[01]`. Consumable/tag info. **Optional** — many models/consumables never answer. See [Consumable status](#consumable-status) |
 | `0x21` | SetDensity | `0x31` | data = `[density]` (B1: 1–5; 3 = default) |
 | `0x23` | SetLabelType | `0x33` | data = `[1]` (with gaps) |
 | `0x01` | PrintStart | `0x02` | data = `[pages_hi pages_lo 00 00 00 00 00 speed 00]` (9b, `v4`) **or** `[pages_hi pages_lo 00 00 00 00 00]` (7b, `b1`) |
@@ -170,6 +175,80 @@ sequence, but `b1` (per niimbluelib) is used — `v4` gave no better cadence.
 > per write), so the printer can briefly wait between such labels. Real labels (text,
 > codes, logos — mostly white) run-length-collapse and stream continuously; for N
 > identical labels, `copies` uploads once and never stalls.
+
+## Consumable status
+
+Whether the lid is shut, paper is loaded, and what the RFID consumable claims.
+Exposed by `Niimbot.getStatus()` (`src/niimbot.js`, section *Consumable status*).
+
+> ⚠ **Everything in this section is INFERRED, not validated.** Unlike the rest of
+> this document, **no byte here has been observed on a printer in this lab.** The
+> field offsets were transcribed from niimbluelib
+> ([`src/packets/abstraction.ts`](https://github.com/MultiMote/niimbluelib/blob/main/src/packets/abstraction.ts),
+> `processHeartbeatAdvanced1` / `processHeartbeatAdvanced2` / `processRfidInfo`;
+> opcodes from `src/packets/commands.ts`, `HeartbeatType` from
+> `src/packets/payloads.ts`, read 2026-08-11). Treat the decode as a hypothesis:
+> `getStatus()` returns the **raw response bytes** precisely so it can be settled
+> on hardware, and **the driver itself never reads the decoded fields** — a
+> wrongly-decoded `paperInserted` that refused a job would be worse than no status
+> at all.
+
+### Heartbeat `0xDC` → `0xD9` / `0xDD`
+
+The request byte is a *type*: `HeartbeatType { Advanced1 = 1, Basic = 2, Unknown =
+3, Advanced2 = 4 }`. This driver sends `[04]`, and the response **opcode** — not
+the request — says which layout came back:
+
+| Response | niimbluelib name | Decoded here |
+|---|---|---|
+| `0xD9` | `In_HeartbeatAdvanced2` | yes (payload ≥ 9 B) |
+| `0xDD` | `In_HeartbeatAdvanced1` | yes (payload 10 / 13 / 19 / 20 B) |
+| `0xDE` | `In_HeartbeatBasic` | no — niimbluelib decodes no fields from it |
+| `0xDF` | `In_HeartbeatUnknown` | no |
+
+**Advanced2 (`0xD9`)** — offsets into the payload (after the frame header):
+
+| Offset | Field | Meaning |
+|---|---|---|
+| 0–1 | — | skipped |
+| 2 | `chargeLevel` | battery level |
+| 3 | `temp` | temperature |
+| 4 | `lidClosed` | **`0` = closed** |
+| 5 | `paperInserted` | **`0` = inserted** |
+| 6 | `paperRfidSuccess` | non-zero = tag read ok |
+| 7 | `ribbonRfidSuccess` | non-zero = tag read ok |
+| 8 | `ribbonInserted` | `0` = inserted |
+| 9+ | `wifiRssi`, `lightingErrorCode`, `voltageState` | optional; **not decoded here** (endianness/presence unverifiable without hardware — the bytes stay in `raw`) |
+
+**Advanced1 (`0xDD`)** — the layout is keyed off the payload **length**, and each
+listed length consumes the payload exactly (niimbluelib's reader errors on leftover
+bytes), which is the main reason to trust the transcription:
+
+| Length | `lidClosed` | `chargeLevel` | `paperInserted` | `paperRfidSuccess` |
+|---|---|---|---|---|
+| 10 | 8 | 9 | — | — |
+| 13 | 9 | 10 | 11 | 12 |
+| 19 | 15 | 16 | 17 | 18 |
+| 20 | — | — | 18 | 19 |
+
+Any other length → **not decoded** (`decoded: null`), never a partially-filled
+object. niimbluelib also inverts `lidClosed` for a list of model ids (512, 513,
+514, 272, 273, 274, 1792, 2304, 2560, 3584, 3840, 4352, 5120); **none** of the
+models in the table above is in it, and the driver applies the same list.
+
+### RfidInfo `0x1A` → `0x1B`
+
+Request data `[01]`. **A missing answer is normal**, not an error: many
+models/consumables never reply, so the driver waits ~600 ms and reports
+`rfid: null`.
+
+| Payload | Layout |
+|---|---|
+| exactly 1 byte | no tag present |
+| otherwise | `uuid[8]` · `barCode` (u8 length + bytes) · `serialNumber` (u8 length + bytes) · `allPaper` (i16 **big-endian**) · `usedPaper` (i16 BE) · `consumablesType` (u8) · optional `capacity` (i16 BE) |
+
+If the payload overruns or leaves bytes over, it is **not** this layout and the
+decode returns `null` rather than a guess.
 
 ## Label geometry
 

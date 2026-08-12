@@ -6,6 +6,64 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+## [1.4.0] - 2026-08-11
+### Added
+- `Niimbot.getStatus()` — consumable status (lid closed, paper inserted, charge level,
+  RFID read state, and the RFID tag's uuid/barcode/serial/paper counts) read from
+  `Heartbeat 0xDC[04]` and `RfidInfo 0x1A[01]` on an already-connected printer.
+  ⚠ **The decode is UNVALIDATED: the field offsets are transcribed from niimbluelib and
+  have never been checked against a real printer.** It is reported as
+  `confidence: "inferred"` (there is no `"validated"` value yet) and it is **advisory
+  only — no print path calls it and the driver never branches on it**, because a
+  wrongly-decoded `paperInserted` refusing a job into a loaded printer would be worse
+  than shipping no status at all. Do not gate printing on it.
+  What is *not* a guess is `raw`: the exact response bytes are always returned intact,
+  an unrecognised payload yields `decoded: null` / `confidence: "unknown"` instead of a
+  half-filled object, and a printer that never answers `RfidInfo` (normal on many
+  models/consumables) yields `rfid: null` rather than an error.
+- Demo: a **Read status** button that hex-dumps those raw bytes into the log panel.
+  Capturing a dump next to what the printer physically shows (lid, paper, tag) is the
+  step that will settle the layout and turn the decode from inferred into validated.
+- `test/status.test.js` — harness driving `getStatus()` against a fake characteristic
+  (known layout, unknown length, silent RFID, malformed/truncated RFID), and asserting
+  that the driver never calls `getStatus()` itself. No printer involved: it proves the
+  decoder matches the transcribed layouts, not that a printer sends them.
+- `docs/protocol-v4.md`: a *Consumable status* section with the request/response
+  opcodes, payload lengths and field offsets — explicitly marked as inferred from
+  niimbluelib and not confirmed on hardware here.
+- `Niimbot.FORCE_PACING` (default `false`) — forces the paced write path on a model or
+  platform the driver detected as `"fast"`. It is read **per write**, so it can be
+  flipped on an already-open connection, and the detected `writeMode` is left intact
+  for logging. The escape hatch for a platform `IS_MAC` doesn't cover: an iPhone is
+  CoreBluetooth too but reports `navigator.platform === "iPhone"`, and until now
+  forcing pacing there meant editing the driver.
+- The connect log line now reports `forcePacing=<bool>` next to `writeMode=` and `mac=`.
+- Demo: an on-screen **log panel** (collapsible, monospace, wraps instead of widening the
+  page) that mirrors `console.log`/`console.error` — including the driver's `writeMode=`
+  line — by wrapping the console methods before the driver loads; calls still reach the
+  real console. A phone has no console, so this is the only place a mobile tester can
+  read that line. It carries a **Copy log** button (clipboard, with an `execCommand`
+  fallback outside a secure context), a **Clear** button, and checkboxes for
+  `Niimbot.FORCE_PACING` and `Niimbot.DEBUG` (off by default, so the packet dump does not
+  bury `writeMode=`). Demo errors now go to the panel as well as the status line.
+### Changed
+- README: documented `Niimbot.FORCE_PACING` in the API list, added a per-platform
+  support table (Android's location-services gate for BLE scanning; iOS needs a
+  polyfilling browser such as Bluefy, since Safari has no Web Bluetooth), and an
+  *iOS coverage* section recording exactly what was tested.
+- **iPhone validated on the B1 Pro via Bluefy (2026-08-11): single label and the
+  5-dense-label stress run both print**, the dense run with a short inter-label pause
+  (BLE throughput, not a fault). This was the open question, and the result is the
+  opposite of the expected one: the macOS blank-print burst drop **did not** occur on
+  iOS in `"fast"` mode, so that failure is specific to **macOS**, not to CoreBluetooth
+  in general — `IS_MAC` correctly stays `false` on iPhone. `FORCE_PACING` therefore
+  ships as the diagnostic for this class of failure, not as a setting iOS requires.
+  Still untested on iOS: B1 and M2-H (the frame-bundling models).
+- Corrected two false claims in the `src/niimbot.js` header comment: the driver does
+  `fetch` the image URL and rasterize it on an offscreen `<canvas>` (it owns no UI and
+  reads no config, which is what was meant), and Web Bluetooth on Safari/iOS is now a
+  polyfill route rather than a flat "does not exist".
+
 ## [1.3.5] - 2026-06-07
 ### Added
 - README: a "Real-world use" GIF (the driver printing real labels in a production app)

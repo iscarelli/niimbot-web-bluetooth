@@ -1,7 +1,9 @@
 # Continuation notes — Niimbot B1 work
 
 > Working copy of the session memory, kept in-repo so it travels across machines.
-> Merged to **main**; latest release **v1.3.1** (M2-H + auto-identification; 1.3.1 drops a stale registry `_untested`).
+> Merged to **main**; latest release **v1.4.0** (mobile: iPhone via Bluefy validated on the
+> B1 Pro, Android natively; `FORCE_PACING`; demo log panel; `getStatus()` with an
+> **unvalidated** decode — see `CHANGELOG.md`).
 > **M2-H validated** (id 4608, 300 dpi, b1 task + fast writes). The only residual
 > slowness is a full random-noise page at 300 dpi (BLE throughput, MTU ≈ 247 → ~2
 > frames/write) — not a real-label case. v4 sequence was tested on M2-H, no better.
@@ -66,7 +68,8 @@ noise, worst case) → only a minimal pause. Driver considered viable.
 - `Niimbot.VERSION` string + the demo cache-busts the driver script (shows the
   version in the tab title / console) — handy to confirm fresh JS loaded.
 - Local test server: `node demo/serve.mjs` then open
-  `http://localhost:8080/demo/` in Chrome/Edge. (On this machine `python` is only the
+  `http://localhost:8080/demo/index.html` in Chrome/Edge (the bare `/demo/` 404s —
+  the server has no directory index). (On this machine `python` is only the
   Microsoft Store stub — use node.)
 
 ## On the other machine

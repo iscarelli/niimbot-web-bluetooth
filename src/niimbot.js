@@ -5,8 +5,10 @@
  * Reverse-engineered against niimbluelib; the task is chosen per model.
  *
  * No dependencies, no build. Load with <script src="niimbot.js"></script> and
- * use the global `window.Niimbot` API. It never touches the DOM nor fetches any
- * config — the app passes the printer model and label size (see registry.json).
+ * use the global `window.Niimbot` API. It reads no config of its own and owns no
+ * UI — the app passes the printer model and label size (see registry.json). It
+ * does `fetch` the image URL it is given and rasterize it on an offscreen
+ * <canvas> (`imageToPacked`); nothing is added to the page.
  *
  *   await Niimbot.printImage(pngUrl, { model, size, onProgress });
  *   await Niimbot.printBatch([url1, url2], { model, size, onProgress });
@@ -14,8 +16,9 @@
  *   model: { name_prefixes:[], task, density, label_type, speed }  (from registry.json)
  *   size:  { w_px, h_px }                                      (from registry.json)
  *
- * Requirements: Chrome/Edge over HTTPS (or localhost). Web Bluetooth does not
- * exist on Firefox/Safari — check Niimbot.isSupported() before offering it.
+ * Requirements: a browser with Web Bluetooth, over HTTPS (or localhost). Which
+ * browsers qualify (and the iOS polyfill route) is in the README's Requirements
+ * table — check Niimbot.isSupported() before offering it.
  *
  * Print flow (one job, N pages): connect → SetDensity → SetLabelType →
  *   PrintStart (declares N pages) → for each page: SetPageSize → rows
@@ -31,7 +34,7 @@
 (function (root) {
   "use strict";
 
-  const VERSION = "1.3.5";   // shown in the demo/console; bump on each release (or dev change)
+  const VERSION = "1.4.0";   // shown in the demo/console; bump on each release (or dev change)
   const SVC_UUID = "e7810a71-73ae-499d-8c15-faa9aef0c3f2";
   const CHAR_UUID = "bef8d6c9-9c21-4c9e-b632-bd58c1009f9f";
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -105,15 +108,24 @@
     try { if (navigator.userAgentData && navigator.userAgentData.platform) return navigator.userAgentData.platform === "macOS"; } catch (e) {}
     return /Mac/i.test((navigator.platform || "") + " " + (navigator.userAgent || ""));
   })();
-  let writeMode = "fast";   // "fast" | "acked" | "paced"
+  let writeMode = "fast";   // "fast" | "acked" | "paced" — as DETECTED at connect; never overwritten by FORCE_PACING
   let PACE_MS = 10;         // gap (ms) between unacked writes so rows aren't dropped; runtime-tunable via Niimbot.PACE_MS
+  // Escape hatch for a platform this driver doesn't recognize (IS_MAC covers macOS;
+  // an iPhone reports "iPhone" and is NOT matched, yet it is CoreBluetooth too). Set
+  // Niimbot.FORCE_PACING = true and a detected "fast" behaves as "paced". Read per
+  // write, not per connect, so it can be flipped on an already-open connection.
+  let FORCE_PACING = false;
+  function effectiveWriteMode() {
+    return (FORCE_PACING && writeMode === "fast") ? "paced" : writeMode;
+  }
   async function writeRaw(bytes) {
-    if (writeMode === "acked") { await characteristic.writeValueWithResponse(bytes); return; }
+    const mode = effectiveWriteMode();
+    if (mode === "acked") { await characteristic.writeValueWithResponse(bytes); return; }
     // writeValueWithoutResponse pode estourar o buffer BLE em rajada — retry curto.
     for (let tries = 0; tries < 30; tries++) {
       try {
         await characteristic.writeValueWithoutResponse(bytes);
-        if (writeMode === "paced") await sleep(PACE_MS);
+        if (mode === "paced") await sleep(PACE_MS);
         return;
       } catch (e) { await sleep(4); }
     }
@@ -277,7 +289,7 @@
     writeMode = needsPacing ? (props.writeWithoutResponse ? "paced" : "acked") : "fast";
     _bundleAllowed = !!(meta && meta.bundle);   // only bundle frames where validated (B1, M2-H)
     if (IS_MAC && writeMode === "fast") writeMode = "paced";   // macOS drops unacked bursts → pace the "fast" models too
-    logMsg(`writeMode=${writeMode} bundle=${_bundleAllowed} mac=${IS_MAC} pace=${PACE_MS} (task=${task || "?"}, model=${(meta && meta.label) || "?"}, write=${!!props.write}, writeNoResp=${!!props.writeWithoutResponse})`);
+    logMsg(`writeMode=${writeMode} forcePacing=${FORCE_PACING} bundle=${_bundleAllowed} mac=${IS_MAC} pace=${PACE_MS} (task=${task || "?"}, model=${(meta && meta.label) || "?"}, write=${!!props.write}, writeNoResp=${!!props.writeWithoutResponse})`);
     if (task === "b1") await b1Handshake();
   }
 
@@ -301,6 +313,118 @@
       await sendWait(0x40, [sub], null, 600);                  // PrinterInfo (response code varies)
     }
     await sendWait(0xdc, [0x04], 0xd9, 1000);                  // Heartbeat
+  }
+
+  // ── Consumable status: EXPOSED, never enforced ──────────────────────────────
+  // Heartbeat (0xDC[04] → 0xD9) and RfidInfo (0x1A[01] → 0x1B) say whether the lid is
+  // shut, paper is loaded and what the RFID consumable claims. NOTHING in this driver
+  // reads these fields: no print path calls getStatus() or branches on it. The offsets
+  // below come from niimbluelib and are UNCONFIRMED on hardware here (see
+  // docs/protocol-v4.md § Consumable status), and a wrongly decoded `paperInserted`
+  // that refused a job into a perfectly loaded printer is worse than no status at all.
+  // So `decoded` is advisory and `raw` is the contract: the exact response bytes, which
+  // is the only part that cannot be wrong, and what lets the layout be settled later.
+  // Not for use mid-print: it shares the single `pending` slot with the print path.
+
+  // niimbluelib abstraction.ts processHeartbeatAdvanced1: these model ids report the
+  // lid byte inverted. None of MODEL_IDS is in it; kept so an unknown printer decodes
+  // the same way niimbluelib would.
+  const INVERTED_LID_MODELS = [512, 513, 514, 272, 273, 274, 1792, 2304, 2560, 3584, 3840, 4352, 5120];
+
+  // Decode a heartbeat response. The LAYOUT IS PICKED BY THE RESPONSE OPCODE, then by
+  // payload length — `0xD9` is In_HeartbeatAdvanced2 (what type 04 asks for), `0xDD` is
+  // In_HeartbeatAdvanced1. `0xDE`/`0xDF` (Basic/Unknown) carry no fields niimbluelib
+  // decodes, so they yield null rather than a guess. Booleans follow niimbluelib's
+  // polarity exactly: 0 = lid closed, 0 = paper inserted, non-0 = RFID read ok.
+  function decodeHeartbeat(cmd, d) {
+    const n = d.length;
+    let hb = null;
+    if (cmd === 0xd9) {                       // Advanced2 — needs ≥ 9 bytes
+      if (n < 9) return null;
+      hb = {
+        layout: `advanced2/${n}`,
+        chargeLevel: d[2], temp: d[3],
+        lidClosed: d[4] === 0, paperInserted: d[5] === 0, paperRfidSuccess: d[6] !== 0,
+        ribbonRfidSuccess: d[7] !== 0, ribbonInserted: d[8] === 0,
+      };
+      // Trailing wifiRssi / lightingErrorCode / voltageState are deliberately NOT
+      // decoded: optional in niimbluelib and unverifiable here. They stay in `raw`.
+    } else if (cmd === 0xdd) {                // Advanced1 — layout keyed off length
+      if (n === 10) hb = { layout: "advanced1/10", lidClosed: d[8] === 0, chargeLevel: d[9] };
+      else if (n === 13) hb = { layout: "advanced1/13", lidClosed: d[9] === 0, chargeLevel: d[10], paperInserted: d[11] === 0, paperRfidSuccess: d[12] !== 0 };
+      else if (n === 19) hb = { layout: "advanced1/19", lidClosed: d[15] === 0, chargeLevel: d[16], paperInserted: d[17] === 0, paperRfidSuccess: d[18] !== 0 };
+      else if (n === 20) hb = { layout: "advanced1/20", paperInserted: d[18] === 0, paperRfidSuccess: d[19] !== 0 };
+      else return null;                       // unknown length → no half-filled object
+    } else {
+      return null;
+    }
+    if (hb.lidClosed != null && printerInfo && INVERTED_LID_MODELS.indexOf(printerInfo.modelId) >= 0) {
+      hb.lidClosed = !hb.lidClosed;
+    }
+    return hb;
+  }
+
+  // Decode an RfidInfo (0x1B) payload, per niimbluelib processRfidInfo:
+  //   1 byte                → no tag present
+  //   uuid[8] · barCode(u8 len + bytes) · serial(u8 len + bytes) · allPaper(i16 BE)
+  //   · usedPaper(i16 BE) · consumablesType(u8) · [capacity(i16 BE)]
+  // niimbluelib's reader throws on an overrun AND on leftover bytes; both mean the
+  // payload isn't this layout, so both return null here instead of a partial guess.
+  function decodeRfid(d) {
+    if (d.length === 1) return { tagPresent: false };
+    let o = 0;
+    const left = () => d.length - o;
+    const i8 = () => d[o++];
+    const i16 = () => { const v = ((d[o] << 8) | d[o + 1]) << 16 >> 16; o += 2; return v; };  // signed BE
+    const str = (k) => { let s = ""; for (let i = 0; i < k; i++) s += String.fromCharCode(d[o + i]); o += k; return s; };
+    if (left() < 8) return null;
+    const uuid = Array.from(d.slice(0, 8)).map(h2).join("");
+    o = 8;
+    if (left() < 1 || left() < 1 + d[o]) return null;
+    const barCode = str(i8());
+    if (left() < 1 || left() < 1 + d[o]) return null;
+    const serialNumber = str(i8());
+    if (left() < 5) return null;                            // allPaper + usedPaper + type
+    const info = { tagPresent: true, uuid, barCode, serialNumber, allPaper: i16(), usedPaper: i16(), consumablesType: i8() };
+    if (left() === 2) info.capacity = i16();
+    if (left() !== 0) return null;                          // extra data → not this layout
+    return info;
+  }
+
+  // Ask the printer for its consumable status. Advisory only — see the block above.
+  // Returns { raw: { heartbeat, heartbeatCmd, rfid }, decoded, confidence }:
+  //   raw.heartbeat / raw.rfid  exact response payload bytes (Uint8Array) or null
+  //   raw.heartbeatCmd          the response opcode, since it selects the layout
+  //   decoded                   { heartbeat, rfid } (each independently null when the
+  //                             layout isn't recognised), or null when neither decoded
+  //   confidence                "inferred" (from niimbluelib, unverified) | "unknown"
+  // A missing 0x1B is NORMAL — many models/consumables never answer — so it times out
+  // quietly and reports rfid: null rather than throwing.
+  async function getStatus(opts) {
+    if (!characteristic || !device || !(device.gatt && device.gatt.connected)) {
+      throw new Error("Not connected — call Niimbot.connect(model) or Niimbot.identify(model) first (getStatus does not connect on its own).");
+    }
+    const o = opts || {};
+    const hbTimeout = o.timeoutMs != null ? o.timeoutMs : 1000;
+    const rfidTimeout = o.rfidTimeoutMs != null ? o.rfidTimeoutMs : 600;
+    // Accept ANY response opcode (wantResp null, as the handshake's info reads do)
+    // instead of insisting on 0xD9: a printer that answers a different heartbeat
+    // variant still hands us its raw bytes, which is the point. The opcode picks the
+    // layout in decodeHeartbeat.
+    const hb = await sendWait(0xdc, [0x04], null, hbTimeout);      // Heartbeat, type 04
+    const rf = await sendWait(0x1a, [0x01], 0x1b, rfidTimeout);    // RfidInfo (optional)
+    const heartbeat = hb ? decodeHeartbeat(hb.cmd, hb.data) : null;
+    const rfid = rf ? decodeRfid(rf.data) : null;
+    const decoded = (heartbeat || rfid) ? { heartbeat, rfid } : null;
+    return {
+      raw: {
+        heartbeat: hb ? Uint8Array.from(hb.data) : null,
+        heartbeatCmd: hb ? hb.cmd : null,
+        rfid: rf ? Uint8Array.from(rf.data) : null,
+      },
+      decoded,
+      confidence: decoded ? "inferred" : "unknown",
+    };
   }
 
   // ── Bitmap: image → rows packed MSB-first (1 = black) ───────────────────────
@@ -518,11 +642,18 @@
     get DEBUG() { return DEBUG; }, set DEBUG(v) { DEBUG = !!v; },
     get BUNDLE_MAX() { return BUNDLE_MAX; }, set BUNDLE_MAX(v) { BUNDLE_MAX = Math.max(0, v | 0); },
     get PACE_MS() { return PACE_MS; }, set PACE_MS(v) { PACE_MS = Math.max(0, v | 0); },
+    // Force the paced write path even where the driver detected "fast" (applies at
+    // write time, so it can be flipped mid-connection). "acked"/"paced" are unaffected.
+    get FORCE_PACING() { return FORCE_PACING; }, set FORCE_PACING(v) { FORCE_PACING = !!v; },
     get printer() { return printerInfo; },   // { modelId, protocolVersion, label, task, dpi } after connect
     isSupported: () => !!navigator.bluetooth,
     // Connect and identify the printer (model id + protocol) without printing — the
     // app can read the returned info to auto-select the right model/size.
     identify: async (model) => { await connect(model); return printerInfo; },
+    // Consumable status (lid/paper/RFID). ADVISORY: decoded from niimbluelib's layouts
+    // and unconfirmed on hardware here, so the driver itself never reads it — see the
+    // "Consumable status" block above. `raw` carries the exact response bytes.
+    getStatus,
     connect, disconnect, printImage, printBatch,
   };
 })(typeof window !== "undefined" ? window : globalThis);

@@ -14,6 +14,27 @@
     #status { margin-top: 1rem; font-family: monospace; white-space: pre-wrap; }
     canvas { border: 1px solid #ccc; image-rendering: pixelated; max-width: 100%; margin-top: 1rem; }
     .warn { color: #b00; }
+
+    /* Log panel. A phone has no console, so this is the only place a mobile
+       tester can read (and copy) the driver's `writeMode=` line. It must never
+       widen the page: long hex dumps wrap instead of scrolling sideways. */
+    #logbox { margin-top: 1.2rem; border: 1px solid #ccc; border-radius: 4px; padding: .5rem .6rem; }
+    #logbox summary { cursor: pointer; font-weight: 600; }
+    #logbox summary span { font-weight: 400; color: #666; }
+    .logctl { display: flex; flex-wrap: wrap; align-items: center; gap: .3rem .9rem; margin: .6rem 0 .5rem; }
+    .logctl button { padding: .4rem .7rem; font-size: .85rem; }
+    .logctl label { margin: 0; font-size: .85rem; }
+    #log {
+      margin: 0; padding: .5rem; background: #f6f6f6; border-radius: 3px;
+      font-family: ui-monospace, Menlo, Consolas, monospace; font-size: .72rem; line-height: 1.4;
+      white-space: pre-wrap; overflow-wrap: anywhere; word-break: break-word;
+      max-height: 45vh; overflow-y: auto; overflow-x: hidden;
+    }
+    #log .err { color: #b00; }
+    /* Buttons are long ("Print 3 dense labels (stress)") — let them wrap and
+       shrink rather than push the page wider than a ~380 px phone screen. */
+    button { max-width: 100%; white-space: normal; }
+    label input[type="text"], #text { max-width: 100%; }
   </style>
 </head>
 <body>
@@ -29,6 +50,7 @@
 
   <button id="identify">Connect &amp; identify printer</button>
   <button id="disconnect">Disconnect</button>
+  <button id="readstatus">Read status</button>
   <button id="print">Connect and print</button>
   <button id="print3copies">Print 3 copies (1 upload)</button>
   <button id="print3">Print 3-label batch</button>
@@ -36,6 +58,93 @@
   <button id="print5dense">Print 5 dense labels (stress)</button>
   <div id="status"></div>
   <canvas id="preview"></canvas>
+
+  <details id="logbox" open>
+    <summary>Log <span id="logcount">(0 lines)</span></summary>
+    <div class="logctl">
+      <button id="logcopy" type="button">Copy log</button>
+      <button id="logclear" type="button">Clear</button>
+      <label><input type="checkbox" id="optpacing"> FORCE_PACING</label>
+      <label><input type="checkbox" id="optdebug"> DEBUG (packet dump)</label>
+    </div>
+    <pre id="log"></pre>
+  </details>
+
+  <script>
+    // Mirror console.log/.error into the panel above. Installed BEFORE the driver
+    // <script> so the very first line (the version banner) is captured, and it
+    // always forwards to the real console — this only adds a second sink.
+    (function () {
+      const pre = document.getElementById("log");
+      const counter = document.getElementById("logcount");
+      const real = { log: console.log.bind(console), error: console.error.bind(console) };
+      const MAX = 600;          // cap the DOM; a dense DEBUG run emits thousands
+      const lines = [];         // source of truth for "Copy log"
+
+      const fmt = (a) => {
+        if (typeof a === "string") return a;
+        if (a instanceof Error) return a.message;
+        try { return JSON.stringify(a); } catch (e) { return String(a); }
+      };
+      const stamp = () => {
+        const t = new Date();
+        const p = (n, w) => String(n).padStart(w || 2, "0");
+        return `${p(t.getHours())}:${p(t.getMinutes())}:${p(t.getSeconds())}.${p(t.getMilliseconds(), 3)}`;
+      };
+
+      function append(kind, args) {
+        const text = stamp() + "  " + Array.prototype.map.call(args, fmt).join(" ");
+        lines.push(text);
+        const div = document.createElement("div");
+        if (kind === "error") div.className = "err";
+        div.textContent = text;
+        pre.appendChild(div);
+        while (lines.length > MAX) { lines.shift(); pre.removeChild(pre.firstChild); }
+        counter.textContent = `(${lines.length} line${lines.length === 1 ? "" : "s"})`;
+        pre.scrollTop = pre.scrollHeight;
+      }
+
+      console.log = function () { real.log.apply(console, arguments); append("log", arguments); };
+      console.error = function () { real.error.apply(console, arguments); append("error", arguments); };
+
+      // Uncaught failures would otherwise be invisible on a phone.
+      window.addEventListener("error", (e) => console.error("uncaught: " + (e.message || e)));
+      window.addEventListener("unhandledrejection", (e) => {
+        const r = e.reason;
+        console.error("unhandled rejection: " + ((r && r.message) || r));
+      });
+
+      document.getElementById("logclear").addEventListener("click", () => {
+        lines.length = 0; pre.textContent = ""; counter.textContent = "(0 lines)";
+      });
+
+      // Reading a trace off a phone screen is the whole problem, so copying it has
+      // to work. execCommand is the fallback for a non-secure context, where
+      // navigator.clipboard is undefined.
+      document.getElementById("logcopy").addEventListener("click", async () => {
+        const btn = document.getElementById("logcopy");
+        const text = lines.join("\n");
+        let ok = false;
+        try {
+          if (navigator.clipboard && navigator.clipboard.writeText) {
+            await navigator.clipboard.writeText(text);
+            ok = true;
+          }
+        } catch (e) { ok = false; }
+        if (!ok) {
+          const ta = document.createElement("textarea");
+          ta.value = text;
+          ta.style.cssText = "position:fixed;top:0;left:0;opacity:0";
+          document.body.appendChild(ta);
+          ta.select();
+          try { ok = document.execCommand("copy"); } catch (e) { ok = false; }
+          document.body.removeChild(ta);
+        }
+        btn.textContent = ok ? "Copied ✓" : "Copy failed";
+        setTimeout(() => { btn.textContent = "Copy log"; }, 1500);
+      });
+    })();
+  </script>
 
   <script>
     // Cache-bust the driver during development so edits always load (the dev
@@ -46,9 +155,32 @@
   (async function () {
     const $ = (id) => document.getElementById(id);
     const status = (s) => { $("status").textContent = s; };
+    // Errors go to the log panel as well as the status line: on a phone the panel
+    // is the only readable — and copyable — trace. (Progress deliberately does not,
+    // or the one line that matters drowns in percentages.)
+    const fail = (e) => {
+      const m = (e && e.message) || e;
+      console.error("error: " + m);
+      status("error: " + m);
+    };
 
     document.title = "niimbot demo — driver " + (Niimbot.VERSION || "?");
     console.log("[demo] loaded Niimbot driver version:", Niimbot.VERSION);
+
+    // Both toggles exist so a mobile tester can flip them without a console.
+    // DEBUG starts off on purpose: its packet dump buries the `writeMode=` line.
+    Niimbot.DEBUG = false;
+    $("optdebug").checked = Niimbot.DEBUG;
+    $("optpacing").checked = Niimbot.FORCE_PACING;
+    $("optdebug").addEventListener("change", () => {
+      Niimbot.DEBUG = $("optdebug").checked;
+      console.log("[demo] Niimbot.DEBUG =", Niimbot.DEBUG);
+    });
+    // Read per write, so flipping it mid-connection takes effect immediately.
+    $("optpacing").addEventListener("change", () => {
+      Niimbot.FORCE_PACING = $("optpacing").checked;
+      console.log("[demo] Niimbot.FORCE_PACING =", Niimbot.FORCE_PACING);
+    });
 
     if (!Niimbot.isSupported()) {
       $("status").innerHTML = '<span class="warn">Web Bluetooth unavailable — use Chrome/Edge over HTTPS or localhost.</span>';
@@ -160,7 +292,7 @@
           status(`Identified: ${info.label} — ${detail}. No matching model in registry — selection left as is.`);
         }
       } catch (e) {
-        status("error: " + (e && e.message || e));
+        fail(e);
       } finally {
         $("identify").disabled = false;
       }
@@ -172,7 +304,33 @@
         await Niimbot.disconnect();
         status("disconnected — pick a printer and identify again.");
       } catch (e) {
-        status("error: " + (e && e.message || e));
+        fail(e);
+      }
+    });
+
+    // Consumable status. The decoded fields come from niimbluelib's layouts and are
+    // NOT confirmed on hardware, so what matters here is the HEX DUMP of `raw`: paste
+    // it (Copy log) next to what the printer physically shows — lid open/shut, paper
+    // in/out, tag present — and the layout can be settled for real. Nothing in the
+    // print path reads any of this.
+    $("readstatus").addEventListener("click", async () => {
+      $("readstatus").disabled = true;
+      try {
+        status("reading status…");
+        const st = await Niimbot.getStatus();
+        const dump = (u8) => (u8 ? Array.from(u8).map((b) => b.toString(16).padStart(2, "0")).join(" ") : "(no answer)");
+        console.log(`[status] confidence=${st.confidence}`);
+        console.log(`[status] raw heartbeat (resp ${st.raw.heartbeatCmd != null ? "0x" + st.raw.heartbeatCmd.toString(16) : "—"}): ${dump(st.raw.heartbeat)}`);
+        console.log(`[status] raw rfid: ${dump(st.raw.rfid)}`);
+        console.log(`[status] decoded: ${JSON.stringify(st.decoded)}`);
+        const hb = st.decoded && st.decoded.heartbeat;
+        status(hb
+          ? `status (unvalidated): lid ${hb.lidClosed ? "closed" : "open"}, paper ${hb.paperInserted ? "in" : "out"}, charge ${hb.chargeLevel}. See the log for the raw dump.`
+          : "status read — layout not recognised, raw bytes are in the log.");
+      } catch (e) {
+        fail(e);
+      } finally {
+        $("readstatus").disabled = false;
       }
     });
 
@@ -185,7 +343,7 @@
         await Niimbot.printImage(canvas.toDataURL("image/png"), { model, size, onProgress: status });
         status("ok — label sent.");
       } catch (e) {
-        status("error: " + (e && e.message || e));
+        fail(e);
       } finally {
         $("print").disabled = false;
       }
@@ -202,7 +360,7 @@
         await Niimbot.printImage(canvas.toDataURL("image/png"), { model, size, copies: 3, onProgress: status });
         status("ok — 3 copies (single upload) sent.");
       } catch (e) {
-        status("error: " + (e && e.message || e));
+        fail(e);
       } finally {
         $("print3copies").disabled = false;
       }
@@ -224,7 +382,7 @@
         await Niimbot.printBatch(urls, { model, size, onProgress: status });
         status("ok — 3-label batch sent.");
       } catch (e) {
-        status("error: " + (e && e.message || e));
+        fail(e);
       } finally {
         $("print").disabled = false; $("print3").disabled = false;
         refresh();
@@ -248,7 +406,7 @@
         await Niimbot.printBatch(urls, { model, size, onProgress: status });
         status(`ok — ${count} dense labels sent.`);
       } catch (e) {
-        status("error: " + (e && e.message || e));
+        fail(e);
       } finally {
         btns.forEach((b) => ($(b).disabled = false));
         refresh();

@@ -127,6 +127,25 @@ The image must be exactly `w_px × h_px`. The driver thresholds it to 1-bit
 - `Niimbot.identify(model)` → connect and return `Niimbot.printer` without printing.
 - `Niimbot.printer` → detected `{ modelId, protocolVersion, label, task, dpi }` (or
   `null` before connecting). Used to tell a B1 from a B1 Pro (same BLE name).
+- `Niimbot.getStatus()` → consumable status of an **already connected** printer (it
+  throws rather than connecting): `{ raw, decoded, confidence }`.
+  **`raw`** is the contract — `{ heartbeat, heartbeatCmd, rfid }`, the exact response
+  bytes (`Uint8Array`, or `null` if the printer stayed silent).
+  **`decoded`** is a best effort: `{ heartbeat, rfid }`, with `heartbeat` carrying
+  `lidClosed` / `paperInserted` / `chargeLevel` / `paperRfidSuccess` (plus `temp` and
+  the ribbon fields on newer layouts) and `rfid` carrying `uuid` / `barCode` /
+  `serialNumber` / `allPaper` / `usedPaper`. **Either part — or `decoded` itself — can
+  be `null`**: an unrecognised payload is reported as `confidence: "unknown"` instead
+  of being half-decoded, and a printer that never answers `RfidInfo` (normal on many
+  models/consumables) simply yields `rfid: null`.
+  ⚠ **Advisory and unvalidated.** The field offsets come from niimbluelib and have
+  **not** been confirmed against a real printer here (`confidence` is `"inferred"`, and
+  there is no `"validated"` yet), so **the driver never acts on them** — nothing blocks,
+  delays or alters a print based on this. Do not gate printing on it either; if you
+  surface it, surface it as a hint. Details and offsets:
+  [`docs/protocol-v4.md`](docs/protocol-v4.md#consumable-status). The demo's *Read
+  status* button hex-dumps `raw` into the log panel — that dump, next to what the
+  printer physically shows, is what will settle the layout.
 - `Niimbot.isSupported()` → whether `navigator.bluetooth` exists. `false` on Firefox
   and on Safari; `true` inside an iOS browser that polyfills it (see *Requirements*).
 - `Niimbot.DEBUG = true` — log BLE packets + a per-batch timing trace to the console.
@@ -135,6 +154,10 @@ The image must be exactly `w_px × h_px`. The driver thresholds it to 1-bit
 - `Niimbot.PACE_MS` — gap (ms) between unacked writes (default 10). **macOS** drops
   unacked write bursts, so there the driver paces every model; lower this only if your
   printer tolerates a smaller gap.
+- `Niimbot.FORCE_PACING = true` — pace the writes even on a model/platform the driver
+  detected as `"fast"` (it is read per write, so you can flip it on an open connection).
+  Reach for it when a platform the driver doesn't detect drops unacked bursts — a blank
+  or short label while progress reports 100%; iPhone is the open case.
 
 ## Requirements
 
@@ -149,22 +172,26 @@ Web Bluetooth on any platform.
 
 ### iOS coverage — what has actually been tried
 
-Printing from an iPhone works, but the testing behind that sentence is narrow, so
-here is its exact extent rather than a blanket claim:
+Printing from an iPhone works. Here is the exact extent of the testing behind that,
+rather than a blanket claim:
 
-- **Validated:** B1 Pro, one single label, via Bluefy (2026-08-11). The polyfill
-  covers everything the driver needs — `namePrefix` filters, GATT, notifications
-  and `writeValueWithoutResponse`.
-- **Not tried: dense / multi-label pages on iOS.** The B1 Pro streams unpaced
-  (`writeMode="fast"`), and on **macOS** that same unpaced burst prints a *blank*
-  page while reporting 100% — a failure a single label never reveals. iOS is
-  CoreBluetooth too, so the risk is open. Note there is **no runtime workaround**
-  if it bites: `Niimbot.PACE_MS` only applies in `"paced"` mode
-  (`src/niimbot.js:116`) and the mode isn't settable from outside, so forcing
-  pacing on iPhone means widening the `IS_MAC` check at `src/niimbot.js:104` —
-  it is `false` on iPhone, where `navigator.platform` is `"iPhone"`.
+- **Validated on the B1 Pro via Bluefy (2026-08-11):** a single label, and the
+  5-dense-label stress run. The dense run printed correctly, with a short pause
+  between labels — BLE throughput on worst-case content, not a fault. The polyfill
+  covers everything the driver needs: `namePrefix` filters, GATT, notifications and
+  `writeValueWithoutResponse`.
+- **iOS does *not* need pacing, and that is worth stating explicitly.** On **macOS**
+  an unpaced burst prints a *blank* page while reporting 100%, so the driver paces
+  every model there (`IS_MAC`, `src/niimbot.js:107`). iOS is CoreBluetooth too, so
+  the same failure was the expected outcome — it did not happen. The B1 Pro streamed
+  in `"fast"` mode on iPhone and printed. **The macOS burst-drop is specific to
+  macOS, not to CoreBluetooth**, which is why `IS_MAC` deliberately stays `false` on
+  iPhone (where `navigator.platform` is `"iPhone"`).
+  If a future iOS version or another model does drop rows, `Niimbot.FORCE_PACING =
+  true` applies the macOS gap without a driver edit — it is the diagnostic for this
+  class of failure, not a setting anyone needs today.
 - **Not tried: B1 and M2-H on iOS.** These are the models that bundle frames
-  (`BUNDLE_MAX = 240`, `src/niimbot.js:132`), and CoreBluetooth commonly caps an
+  (`BUNDLE_MAX = 240`, `src/niimbot.js:144`), and CoreBluetooth commonly caps an
   unacked write near 182 bytes — an oversized write can be truncated silently.
   If a page comes out incomplete on those, try `Niimbot.BUNDLE_MAX = 180`.
 
@@ -174,13 +201,23 @@ Serve the repo over localhost and open the demo (Web Bluetooth needs HTTPS or
 `localhost`). A dependency-free Node server is included:
 
 ```bash
-node demo/serve.mjs          # then open http://localhost:8080/demo/
+node demo/serve.mjs          # then open http://localhost:8080/demo/index.html
 ```
 
 The demo has a **Model** dropdown (B1 / B1 Pro) and a **Label** dropdown that only
 offers sizes matching the selected model's dpi — mirroring the selection rules above.
 Buttons cover a single label, 3 identical copies (one upload), a 3-label batch
-(distinct), and dense stress tests.
+(distinct), and dense stress tests. **Read status** calls `Niimbot.getStatus()` on an
+already-connected printer and hex-dumps the raw heartbeat/RFID bytes into the log
+panel — capturing those next to what the printer physically shows (lid, paper, tag) is
+how the unvalidated decode gets confirmed.
+
+It also has an **on-screen log panel** mirroring everything the driver writes to the
+console, with a *Copy log* button and checkboxes for `Niimbot.FORCE_PACING` and
+`Niimbot.DEBUG`. That panel exists for phones: a browser on Android or iOS gives you
+no console, so `writeMode=…` — the line that tells you how the driver decided to
+stream — would otherwise be unreadable on the exact platforms whose behaviour is
+least known.
 
 ## Real-world use
 
