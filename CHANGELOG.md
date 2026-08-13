@@ -5,6 +5,8 @@ All notable changes to this project are documented here. The format is based on
 [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
+
+## [2.0.0] - 2026-08-13
 ### Fixed
 - **A job the printer never confirmed no longer resolves as success.** ⚠️ **Behaviour
   change:** `printImage` and `printBatch` now **reject** when the print was not
@@ -30,9 +32,9 @@ All notable changes to this project are documented here. The format is based on
   as "it printed" were being told something untrue and should now handle the rejection.
 - **A printer that went quiet crashed `getStatus()` instead of returning nulls.** Found
   on real hardware, 2026-08-13. The heartbeat is requested with `wantResp = null` —
-  "accept any response opcode" (`src/niimbot.js:542`) — and the timeout **warning**
+  "accept any response opcode" (`src/niimbot.js:574`) — and the timeout **warning**
   formatted that null as hex, so `h2(null)` threw
-  `Cannot read properties of null (reading 'toString')` (`src/niimbot.js:222`). The
+  `Cannot read properties of null (reading 'toString')` (`src/niimbot.js:233`). The
   documented soft path (`raw.heartbeat: null`, `decoded: null`,
   `confidence: "unknown"`) was therefore unreachable: the driver **threw while trying to
   report that nothing answered**. Repeated status polls do go unanswered on a real B1
@@ -45,7 +47,7 @@ All notable changes to this project are documented here. The format is based on
   this button is a deliberate request where the user will wait, so it uses 1500 ms and a
   single retry before declaring there is no roll.
 - **`IS_MAC` is `true` on an iPhone, and the 1.4.0 notes said the opposite.** The check
-  (`src/niimbot.js:107`) falls back to matching `/Mac/i` against `navigator.platform`
+  (`src/niimbot.js:127`) falls back to matching `/Mac/i` against `navigator.platform`
   plus `navigator.userAgent`, and **every iOS user agent contains `"like Mac OS X"`** —
   so iOS matches. Measured on the device: the iPhone's connect line reads `mac=true`.
   Three consequences, all of them corrections rather than changes in behaviour:
@@ -93,7 +95,7 @@ All notable changes to this project are documented here. The format is based on
   tested in Node with no browser.
   The stored value is now a **record** (`{ size, color, … }`), not a bare size id: the
   RFID tag carries no colour — the payload is fully accounted for with zero spare bytes
-  (`src/niimbot.js:464-465`) — so colour is application data and belongs here. Data
+  (`src/niimbot.js:485-486`) — so colour is application data and belongs here. Data
   already on a device is **normalised on read, never rewritten in bulk**: a stored bare
   string reads back as `{ size }`, and `remember(bc, "T50x30")` still works.
   `seed(table)` bulk-loads a hand-written table and **fills gaps only** by default —
@@ -346,7 +348,9 @@ All notable changes to this project are documented here. The format is based on
   (`v4`, 300 dpi), reverse-engineered protocol V4 documentation, and a standalone demo.
 - Multi-label batches print as one continuous job (no stop/retract between labels).
 
-[Unreleased]: https://github.com/iscarelli/niimbot-web-bluetooth/compare/v1.3.5...HEAD
+[Unreleased]: https://github.com/iscarelli/niimbot-web-bluetooth/compare/v2.0.0...HEAD
+[2.0.0]: https://github.com/iscarelli/niimbot-web-bluetooth/compare/v1.4.0...v2.0.0
+[1.4.0]: https://github.com/iscarelli/niimbot-web-bluetooth/compare/v1.3.5...v1.4.0
 [1.3.5]: https://github.com/iscarelli/niimbot-web-bluetooth/compare/v1.3.4...v1.3.5
 [1.3.4]: https://github.com/iscarelli/niimbot-web-bluetooth/compare/v1.3.3...v1.3.4
 [1.3.3]: https://github.com/iscarelli/niimbot-web-bluetooth/compare/v1.3.2...v1.3.3
