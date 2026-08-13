@@ -68,6 +68,28 @@
       "h_px": 354,
       "margin": 10,
       "dpi": 300
+    },
+    "T30x45": {
+      "_note": "Cable flag 30×45+50 @ 300 dpi, B1 Pro. h_px covers the 45 mm FLAG ONLY, not the 50 mm transparent tail: measured 2026-08-13, the printer registers on the gap itself, so a short h_px prints the flag and still advances correctly (docs/NOTES.md § Cable flags). w_px = 30 mm × 11.81 = 354, well inside the printhead, so nothing is clamped.",
+      "label": "30 × 45 mm (cable flag)",
+      "code": "T30*45+50",
+      "w_mm": 30,
+      "h_mm": 45,
+      "w_px": 354,
+      "h_px": 531,
+      "margin": 10,
+      "dpi": 300
+    },
+    "T25x38": {
+      "_note": "Cable flag 25×38+40 @ 300 dpi, B1 Pro. Same convention as T30x45: h_px is the 38 mm flag, not the 40 mm tail. w_px = 25 mm × 11.81 = 295. NOT yet confirmed on paper — the geometry is arithmetic plus the T30x45 precedent.",
+      "label": "25 × 38 mm (cable flag)",
+      "code": "T25*38+40",
+      "w_mm": 25,
+      "h_mm": 38,
+      "w_px": 295,
+      "h_px": 449,
+      "margin": 10,
+      "dpi": 300
     }
   },
   "default_model": "b1pro",

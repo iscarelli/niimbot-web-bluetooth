@@ -28,9 +28,14 @@ SKU variants. The 25×38 blue has a different prefix (`6977031`), a different ma
 is also a valid EAN-13. For these, a `barCode → { size, colour }` table generalises to
 the SKU and is shareable between users.
 
-**8 digits — not a product code.** The two 50 × 30 rolls, both 230 labels, carry
-*different* codes (`11262111`, `10262260`). If they are the same product, this scheme is
-per roll or per batch, and every new 50 × 30 roll needs registering again.
+**8 digits — a different scheme, and not decoded.** Two 50 × 30 rolls of 230 labels carry
+*different* 8-digit codes (`11262111`, `10262260`). Nothing here says what those digits
+mean.
+
+**The operating rule is the maintainer's, and it needs no theory: a different code is a
+different label.** Register it and move on. That is also the only rule that stays correct
+whichever way the schemes turn out, which is why no code here tries to infer that two
+barcodes are "really" the same consumable.
 
 `serialNumber` identifies the individual roll in both schemes: it differs on every roll
 above and carries what look like batch/date codes.
@@ -42,9 +47,10 @@ Three limits, all worth respecting:
   `barCode` with different `serialNumber` — has not happened. An attempt on 2026-08-13
   produced two identical records (same `serialNumber`, same `usedPaper`): the same roll
   read twice, which confirms nothing.
-- Whether the two 8-digit rolls are actually the same product is unestablished. Their
-  serials start `PC0G` and `PZ1G` — different prefixes, so they may be two similar
-  products from different makers rather than one product twice.
+- Whether two 8-digit rolls of the same dimensions are the same product is
+  unestablished and is **not assumed anywhere**: their serials start `PC0G` and `PZ1G`,
+  different prefixes, and the rule above (different code ⇒ different label) means
+  nothing depends on the answer.
 - **Scope: one printer (a B1 Pro) and the six rolls above, on 2026-08-13.** Nothing here
   has been checked against another printer model or another label range.
 

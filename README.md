@@ -124,6 +124,12 @@ The image must be exactly `w_px × h_px`. The driver thresholds it to 1-bit
   **`offsetY`** overrides `size.offset_y_px` to nudge the print down (px, feed axis).
 - `Niimbot.printBatch([url1, url2, …], { model, size, onProgress })` — N *distinct*
   labels in one continuous job (one upload each, streamed back-to-back, no retract).
+- **Both reject when the printer did not confirm the job** — a page left unacknowledged,
+  or the printed-page counter never reaching the total within `Niimbot.PAGE_WAIT_MS`
+  (default 25 000). The error names what stalled and where. Through 1.4.0 they resolved
+  either way, which is how a run that printed 4 of 5 labels reported success.
+  **A rejection means "check the paper", not "nothing printed"**: PrintEnd is sent before
+  the throw, so the paper is fed out and retracted, and some labels may have come out.
 - `Niimbot.identify(model)` → connect and return `Niimbot.printer` without printing.
 - `Niimbot.printer` → detected `{ modelId, protocolVersion, label, task, dpi }` (or
   `null` before connecting). Used to tell a B1 from a B1 Pro (same BLE name).

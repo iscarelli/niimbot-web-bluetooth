@@ -6,6 +6,28 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 ### Fixed
+- **A job the printer never confirmed no longer resolves as success.** ⚠️ **Behaviour
+  change:** `printImage` and `printBatch` now **reject** when the print was not
+  confirmed. Measured on hardware 2026-08-13: a 5-label batch printed **four** labels,
+  every one carrying the first label's content, and the driver logged `all 5 pages
+  printed` and resolved `"ok"`. Two independent silent failures allowed it, and both are
+  fixed:
+  - `waitPage` fell out of its 25 s loop and `return`ed exactly as it did on success, so
+    *printed* and *gave up* were the same answer. It returns a boolean now, and remembers
+    the last counter value so the failure can say **where** it stalled.
+  - the PageEnd ack was discarded, so `page N: buffered (PageEnd acked)` was logged
+    directly beneath the `⚠ no response to e3` warning saying it was not.
+  **PrintEnd is still sent before the rejection** — it is what feeds out and retracts the
+  paper, so skipping it would leave the label under the printhead. The error says so, and
+  names the numbers (`printer counter stopped at page 4 of 5 after 25000ms`), because
+  "print failed" would repeat the mistake this fix exists to correct. A batch also stops
+  streaming further pages once a page goes unconfirmed.
+  New `Niimbot.PAGE_WAIT_MS` (default `25000`) exposes the deadline. Covered by
+  `test/unconfirmed.test.js`, which asserts the **order** of the writes — "PrintEnd was
+  sent" and "PrintEnd was sent first" are different claims and only the second protects
+  the paper.
+  Callers that ignored the resolved value need no change; callers that treated resolution
+  as "it printed" were being told something untrue and should now handle the rejection.
 - **A printer that went quiet crashed `getStatus()` instead of returning nulls.** Found
   on real hardware, 2026-08-13. The heartbeat is requested with `wantResp = null` —
   "accept any response opcode" (`src/niimbot.js:542`) — and the timeout **warning**
@@ -54,6 +76,12 @@ All notable changes to this project are documented here. The format is based on
   cnt" — the consumable's DRM cap, provisioned at 120 % of nominal.
 
 ### Added
+- **`registry.json`: two cable-flag sizes, `T30x45` and `T25x38`.** Both are 300 dpi
+  (B1 Pro). `h_px` covers the **flag only**, not the transparent tail — measured
+  2026-08-13, the printer registers on the gap itself, so a short `h_px` prints the flag
+  and still advances correctly (`docs/NOTES.md` § *Cable flags*). `T30x45` printed
+  correctly on paper; **`T25x38` has not** — its geometry is arithmetic plus the `T30x45`
+  precedent, and its `_note` says so.
 - **`src/label-memory.js` — the barcode→label memory as an optional file.** It was ~40
   lines living only in the demo, so every app that wanted it retyped them (and retyped
   the `localStorage` guards it would get wrong). It cannot live in the driver, which
