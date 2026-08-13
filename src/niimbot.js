@@ -41,7 +41,11 @@
 
   // ── Debug logging (toggle via Niimbot.DEBUG) ────────────────────────────────
   let DEBUG = false;
-  const h2 = (b) => b.toString(16).padStart(2, "0");
+  // Tolerates null because `wantResp` legitimately IS null for the reads that accept
+  // any response opcode (getStatus's heartbeat, the handshake's info reads). Without
+  // this, the timeout WARNING below throws a TypeError — so a printer that simply went
+  // quiet produced a hard error instead of the soft "no answer" the caller handles.
+  const h2 = (b) => (b == null ? "—" : b.toString(16).padStart(2, "0"));
   const hex = (arr) => Array.from(arr).map(h2).join(" ");
   let _imgRows = 0; // coalesce the many 0x84/0x85 row packets into one log line
   function flushImg() {
@@ -219,7 +223,7 @@
     await send(cmd, data);
     const res = await Promise.race([wait, sleep(timeoutMs).then(() => null)]);
     if (pending && pending.cmd === wantResp) pending = null; // clear on timeout
-    if (!res) logMsg(`⚠ no response to ${h2(cmd)} (wanted ${h2(wantResp)}) after ${timeoutMs}ms`);
+    if (!res) logMsg(`⚠ no response to ${h2(cmd)} (wanted ${wantResp == null ? "any" : h2(wantResp)}) after ${timeoutMs}ms`);
     return res; // { cmd, data } or null
   }
 

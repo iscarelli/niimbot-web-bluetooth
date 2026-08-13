@@ -341,6 +341,25 @@ const bytes = (u8) => Array.from(u8 || []);
   assert.equal(st.confidence, "inferred");
   console.log("ok  (c) missing RFID answer is normal, not an error");
 
+  // ── (c'') A printer that goes FULLY quiet must not throw ──────────────────
+  // Regression, hit on real hardware 2026-08-13: the heartbeat is requested with
+  // wantResp = null ("accept any opcode"), and the timeout WARNING formatted that null
+  // as hex — so `h2(null)` threw a TypeError and a printer that simply stopped
+  // answering produced "Cannot read properties of null (reading 'toString')" instead
+  // of the soft, documented "no answer" result. Repeated status polls do go unanswered
+  // on a real B1 Pro, so this is the ordinary case, not an exotic one.
+  reply = { heartbeat: null, rfid: null };
+  st = await Niimbot.getStatus({ timeoutMs: 40, rfidTimeoutMs: 40 });
+  assert.equal(st.raw.heartbeat, null, "a silent heartbeat must be null, not an error");
+  assert.equal(st.raw.heartbeatCmd, null);
+  assert.equal(st.decoded, null, "nothing decodable means decoded === null");
+  assert.equal(st.confidence, "unknown", "and the confidence says so rather than guessing");
+  console.log("ok  (c'') a fully silent printer resolves with nulls instead of throwing");
+
+  // Restore a live heartbeat: the timing check below measures the RFID wait ALONE, and
+  // leaving the heartbeat silent would add its own timeout to the measurement.
+  reply = { heartbeat: { cmd: 0xd9, data: HB }, rfid: null };
+
   // The default RFID wait is short (~600 ms) so this stays a pause, never a hang.
   const t0 = Date.now();
   st = await Niimbot.getStatus();

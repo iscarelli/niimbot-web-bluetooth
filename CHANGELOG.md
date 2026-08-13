@@ -6,6 +6,22 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 ### Fixed
+- **A printer that went quiet crashed `getStatus()` instead of returning nulls.** Found
+  on real hardware, 2026-08-13. The heartbeat is requested with `wantResp = null` —
+  "accept any response opcode" (`src/niimbot.js:542`) — and the timeout **warning**
+  formatted that null as hex, so `h2(null)` threw
+  `Cannot read properties of null (reading 'toString')` (`src/niimbot.js:222`). The
+  documented soft path (`raw.heartbeat: null`, `decoded: null`,
+  `confidence: "unknown"`) was therefore unreachable: the driver **threw while trying to
+  report that nothing answered**. Repeated status polls do go unanswered on a real B1
+  Pro, so this was the ordinary case, not an exotic one. `h2` now renders a missing
+  opcode as `—` and the warning says `wanted any`. Covered by a regression case in
+  `test/status.test.js`.
+- **Demo: *Read tag* now waits longer and retries once.** The same hardware drops
+  `RfidInfo` answers when polled in quick succession — a tag that read fine returned
+  nothing 3 s later. The driver's 600 ms default is tuned for not hanging a connect;
+  this button is a deliberate request where the user will wait, so it uses 1500 ms and a
+  single retry before declaring there is no roll.
 - **`IS_MAC` is `true` on an iPhone, and the 1.4.0 notes said the opposite.** The check
   (`src/niimbot.js:107`) falls back to matching `/Mac/i` against `navigator.platform`
   plus `navigator.userAgent`, and **every iOS user agent contains `"like Mac OS X"`** —

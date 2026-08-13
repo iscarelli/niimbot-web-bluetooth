@@ -593,12 +593,25 @@
     $("rollread").addEventListener("click", async () => {
       $("rollread").disabled = true;
       try {
-        const st = await Niimbot.getStatus();
-        const rfid = st && st.decoded && st.decoded.rfid;
-        if (!rfid || !rfid.tagPresent || !rfid.barCode) {
+        // A real B1 Pro drops RfidInfo answers when polled in quick succession — the
+        // tag reads fine, then the next request 3 s later returns nothing (observed
+        // 2026-08-13). The default 600 ms wait is tuned for not hanging a connect, not
+        // for this button, where the user is asking for the tag and will wait. So:
+        // longer wait, and one retry before declaring there is no roll.
+        let rfid = null;
+        for (let attempt = 1; attempt <= 2 && !rfid; attempt++) {
+          const st = await Niimbot.getStatus({ rfidTimeoutMs: 1500 });
+          const r = st && st.decoded && st.decoded.rfid;
+          if (r && r.tagPresent && r.barCode) { rfid = r; break; }
+          if (attempt === 1) {
+            console.log("[rolls] no tag in the first read — retrying once (the printer drops RfidInfo when polled quickly).");
+            await new Promise((r2) => setTimeout(r2, 400));
+          }
+        }
+        if (!rfid) {
           lastTag = null;
           $("rolltag").textContent = "no tag detected — is a roll fitted and the lid closed?";
-          console.log("[rolls] no consumable tag detected.");
+          console.log("[rolls] no consumable tag detected after 2 attempts.");
           return;
         }
         lastTag = rfid;
