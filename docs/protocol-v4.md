@@ -9,9 +9,11 @@ version 3**, 203 dpi). See [Print task variants](#print-task-variants-v4-vs-b1).
 > tested on real hardware. The other models listed per family share the protocol and
 > should work, but are **untested** — treat their parameters as a starting point.
 >
-> **One section is not validated at all:** [Consumable status](#consumable-status)
-> (the `0xDC`/`0x1A` response layouts) is transcribed from niimbluelib and has
-> **never been seen on a printer here**. It is flagged again in place.
+> **One section is validated only in part:** [Consumable status](#consumable-status)
+> (the `0xDC`/`0x1A` response layouts). Five of its fields are now confirmed against
+> real B1 Pro captures; the rest is still transcribed from niimbluelib and has never
+> been seen on a printer here. Which is which is marked field by field, in place and
+> in the API (`decoded.evidence`).
 
 ## Transport (Web Bluetooth / BLE GATT)
 
@@ -181,17 +183,78 @@ sequence, but `b1` (per niimbluelib) is used — `v4` gave no better cadence.
 Whether the lid is shut, paper is loaded, and what the RFID consumable claims.
 Exposed by `Niimbot.getStatus()` (`src/niimbot.js`, section *Consumable status*).
 
-> ⚠ **Everything in this section is INFERRED, not validated.** Unlike the rest of
-> this document, **no byte here has been observed on a printer in this lab.** The
-> field offsets were transcribed from niimbluelib
-> ([`src/packets/abstraction.ts`](https://github.com/MultiMote/niimbluelib/blob/main/src/packets/abstraction.ts),
-> `processHeartbeatAdvanced1` / `processHeartbeatAdvanced2` / `processRfidInfo`;
-> opcodes from `src/packets/commands.ts`, `HeartbeatType` from
-> `src/packets/payloads.ts`, read 2026-08-11). Treat the decode as a hypothesis:
-> `getStatus()` returns the **raw response bytes** precisely so it can be settled
-> on hardware, and **the driver itself never reads the decoded fields** — a
-> wrongly-decoded `paperInserted` that refused a job would be worse than no status
-> at all.
+**Trust here is per field, and the API says so.** `getStatus()` returns a
+`decoded.evidence` map alongside the values, marking every decoded field:
+
+| Marker | Means |
+|---|---|
+| `observed` | The byte moved on real hardware here, exactly as the field name says, with the other variables held fixed. **Niimbot B1 Pro (model id `4097`) only.** |
+| `varies` | The byte was seen to move with the right physical event, but *what* it measures — or in what unit — is not settled. |
+| `inferred` | Not confirmed here. Covers niimbluelib's transcribed names **and** readings these captures support without proving (`printLimit`). |
+
+The rest of this section is the evidence behind those markers, so a reader can
+re-derive them rather than take them on faith. Where nothing was observed, the
+source is niimbluelib
+([`src/packets/abstraction.ts`](https://github.com/MultiMote/niimbluelib/blob/main/src/packets/abstraction.ts),
+`processHeartbeatAdvanced1` / `processHeartbeatAdvanced2` / `processRfidInfo`;
+opcodes from `src/packets/commands.ts`, `HeartbeatType` from
+`src/packets/payloads.ts`, read 2026-08-11).
+
+> ⚠ **The driver still never reads any of it.** No print path calls `getStatus()`
+> or branches on it, and that did not change when fields became validated: six
+> captures on one model is not enough to refuse a job into a printer that is
+> actually loaded. `Niimbot.readiness(status)` *reports*; it is wired to nothing.
+> `raw` remains the contract — the exact response bytes, the only part that cannot
+> be wrong.
+
+### The captures (Niimbot B1 Pro, model id 4097, 2026-08-11)
+
+Six `0xD9` heartbeats with a 13-byte payload, each recorded next to the printer's
+physical state. `c1`–`c4` change one thing at a time against a control; `c5`/`c6`
+bracket a 3-label print job 24 seconds apart.
+
+```
+        idx0 idx1 idx2 idx3 idx4 idx5 idx6 idx7..12   physical state
+c1:     1f   58   50   48   01   01   00   00 …       lid OPEN,   no paper, no tag
+c2:     1f   50   50   48   00   00   01   00 …       lid closed, paper in, tag read
+c3:     1f   53   50   48   00   01   00   00 …       lid closed, no paper, no tag
+c4:     1f   50   50   48   00   00   00   00 …       lid closed, paper in, NO tag
+c5:     1f   50   50   49   00   00   01   00 …       22:15:16 — immediately before 3 labels
+c6:     1f   4a   50   4a   00   00   01   00 …       22:15:40 — immediately after them
+```
+
+What each comparison settles:
+
+- **`idx4` = lid, `idx5` = paper — and they are confirmed *independently*.** `c3` is
+  the capture that matters: it holds paper-absent fixed while closing the lid, and only
+  `idx4` follows. Without `c3`, `lidClosed = !(idx1 & 0x08)` fit the data equally well.
+- **`idx6` = paper RFID read success.** `c2` vs `c4` holds lid and paper fixed and removes
+  only the tag; `idx6` is the sole byte that moves. So the tag bit is independent of
+  paper, paper detection does not need a tag, and a missing tag is not an error.
+- **`idx3` tracks something thermal — but not necessarily in °C.** `0x48` (72) idle,
+  `0x49` (73) just before the job, `0x4a` (74) right after three labels. It rises with
+  print activity, which is why it is kept; 72–74 is high for °C on a lightly-used
+  printhead, which is why the unit is not claimed. Marked `varies`.
+- **`idx2` read `0x50` (80) in all six.** Constant is not confirmed, only unrefuted, so
+  niimbluelib's `chargeLevel` name stands as `inferred`.
+
+#### Refuted, and recorded so it is not re-derived
+
+**`idx1` is not an error code.** Reading its low nibble as one (`0` = none, `8` = lid
+open, `3` = out of paper) fits `c1`–`c4` perfectly and is wrong: `c6` was taken right
+after a clean 3-label print with nothing amiss, and reads `0x4a` — low nibble `a`. Across
+the six captures `idx1` reads 88, 80, 83, 80, 80, 74 decimal: an analog-looking quantity
+that sagged under print load, not an enum. **`idx1` is not decoded and must not be named**
+until a capture explains it.
+
+*Open, and explicitly speculation:* `idx1`/`idx2`/`idx3` look like a battery triple —
+88 → 80 → 74 decivolts would be 8.8 → 8.0 → 7.4 V, which fits a 2S pack, next to a
+charge percentage and a temperature. Nothing here tests that.
+
+**`ribbonInserted` was shipped wrong in 1.4.0.** `idx8` decoded as `ribbonInserted: true`
+in every capture — on a B1 Pro, which is direct-thermal and has no ribbon at all. `idx7`
+(`ribbonRfidSuccess`) rests on the same unverified offset. Both are **removed** from
+`decoded`; their bytes are still in `raw`.
 
 ### Heartbeat `0xDC` → `0xD9` / `0xDD`
 
@@ -206,23 +269,35 @@ the request — says which layout came back:
 | `0xDE` | `In_HeartbeatBasic` | no — niimbluelib decodes no fields from it |
 | `0xDF` | `In_HeartbeatUnknown` | no |
 
-**Advanced2 (`0xD9`)** — offsets into the payload (after the frame header):
+**Advanced2 (`0xD9`)** — offsets into the payload (after the frame header). The
+*Evidence* column is what the API reports, and it applies **only to model id 4097
+with a 13-byte payload**; any other model or length drops every field to `inferred`,
+because these are absolute offsets and the layout has been seen at exactly one size.
 
-| Offset | Field | Meaning |
-|---|---|---|
-| 0–1 | — | skipped |
-| 2 | `chargeLevel` | battery level |
-| 3 | `temp` | temperature |
-| 4 | `lidClosed` | **`0` = closed** |
-| 5 | `paperInserted` | **`0` = inserted** |
-| 6 | `paperRfidSuccess` | non-zero = tag read ok |
-| 7 | `ribbonRfidSuccess` | non-zero = tag read ok |
-| 8 | `ribbonInserted` | `0` = inserted |
-| 9+ | `wifiRssi`, `lightingErrorCode`, `voltageState` | optional; **not decoded here** (endianness/presence unverifiable without hardware — the bytes stay in `raw`) |
+| Offset | Field | Meaning | Evidence |
+|---|---|---|---|
+| 0 | — | constant `0x1f` in all six captures; not decoded | — |
+| 1 | — | **not decoded** — proposed as an error code and refuted, see above | — |
+| 2 | `chargeLevel` | battery level (niimbluelib's name; constant `0x50` across the captures) | `inferred` |
+| 3 | `temp` | rises with print activity; **unit unverified** | `varies` |
+| 4 | `lidClosed` | **`0` = closed**, `1` = open | `observed` |
+| 5 | `paperInserted` | **`0` = inserted**, `1` = absent | `observed` |
+| 6 | `paperRfidSuccess` | non-zero = tag read ok | `observed` |
+| 7 | — | `ribbonRfidSuccess` in 1.4.0; **removed** (see above) | — |
+| 8 | — | `ribbonInserted` in 1.4.0; **removed, it was wrong** | — |
+| 9+ | `wifiRssi`, `lightingErrorCode`, `voltageState` | optional in niimbluelib; **not decoded here** (endianness/presence unverified — the bytes stay in `raw`) | — |
 
-**Advanced1 (`0xDD`)** — the layout is keyed off the payload **length**, and each
-listed length consumes the payload exactly (niimbluelib's reader errors on leftover
-bytes), which is the main reason to trust the transcription:
+> **Why the model restriction is not mere caution.** The NIIMBOT Community Wiki says of
+> this heartbeat: *"For specific printer models, lid-closed logic is inverted (1 =
+> closed)."* Our captures show `1 = OPEN`. So `lidClosed` is a field **known to vary by
+> printer** — widening the claim to the B1 (`4096`) or M2-H (`4608`), neither of which has
+> ever been captured, could invert its meaning. Source:
+> <https://printers.niim.blue/>.
+
+**Advanced1 (`0xDD`)** — never captured here at all; every field is `inferred`. The
+layout is keyed off the payload **length**, and each listed length consumes the payload
+exactly (niimbluelib's reader errors on leftover bytes), which is the main reason to
+trust the transcription:
 
 | Length | `lidClosed` | `chargeLevel` | `paperInserted` | `paperRfidSuccess` |
 |---|---|---|---|---|
@@ -245,7 +320,36 @@ models/consumables never reply, so the driver waits ~600 ms and reports
 | Payload | Layout |
 |---|---|
 | exactly 1 byte | no tag present |
-| otherwise | `uuid[8]` · `barCode` (u8 length + bytes) · `serialNumber` (u8 length + bytes) · `allPaper` (i16 **big-endian**) · `usedPaper` (i16 BE) · `consumablesType` (u8) · optional `capacity` (i16 BE) |
+| otherwise | `uuid[8]` · `barCode` (u8 length + bytes) · `serialNumber` (u8 length + bytes) · **`printLimit`** (i16 **big-endian**; niimbluelib calls this `allPaper`) · `usedPaper` (i16 BE) · `consumablesType` (u8) · optional `capacity` (i16 BE) |
+
+Unlike the heartbeat, this layout is **self-describing** (length-prefixed strings), so a
+field keeps its meaning at any payload size. The evidence below is therefore scoped by
+**model** (4097) and not also by length.
+
+#### The captures — two physical rolls on a B1 Pro, 2026-08-11
+
+```
+roll A  41 B  88 1d 15 a4 e1 97 00 00 · 08 "11262111" · 10 "PC0G229321004571"
+              · 01 14 · 00 06 · 01 · 00 e6
+roll B  41 B  88 1d 19 3c 03 13 10 80 · 08 "02272333" · 10 "PJ0H925674000473"
+              · 00 78 · 00 03 · 01 · 00 64
+```
+
+Both consume the payload with **zero bytes left over** (8+1+8+1+16+2+2+1+2 = 41), which
+corroborates the structure. The field meanings settle separately:
+
+| Field | Roll A | Roll B | Evidence | Why |
+|---|---|---|---|---|
+| `usedPaper` | 6 → **9** | 3 | `observed` | Read immediately before and after a 3-label job on roll A: it moved by exactly 3. Independently backed by the "printed label cnt" block in the wiki's tag map. |
+| `capacity` | 230 | 100 | `observed` | The printer's owner confirmed 230 is roll A's label count when new. |
+| `printLimit` | 276 | 120 | `inferred` | **Not a paper total.** 276 exceeds the 230-label roll it came off, and it did not move across the print job. `printLimit / capacity` is **exactly 1.2 on both rolls**, and the wiki's tag map lists a *"print limited cnt"* — so the reading is the consumable's DRM cap, provisioned at 120 % of nominal. Two rolls, one model, one label type: a well-supported inference, not a validated field. Source: <https://printers.niim.blue/other/rfig-tags/> |
+| `consumablesType` | 1 | 1 | `inferred` | `1` = "with gaps" per <https://printers.niim.blue/other/label-types/>, but it read the same on both rolls — **never observed to vary**, so it is not promoted. |
+| `uuid`, `barCode`, `serialNumber`, `tagPresent` | — | — | `inferred` | They differ per roll, but nothing here confirms which value is which. |
+
+> **niimbluelib's `allPaper` name is deliberately not exposed.** A caller reading
+> `allPaper: 276` on a 230-label roll would be misled about a quantity of paper; the
+> field is surfaced as `printLimit` instead, marked `inferred`. The bytes are unchanged
+> and remain in `raw`.
 
 If the payload overruns or leaves bytes over, it is **not** this layout and the
 decode returns `null` rather than a guess.

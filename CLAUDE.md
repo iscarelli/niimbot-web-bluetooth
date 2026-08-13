@@ -21,7 +21,7 @@ replacing it takes `Object.defineProperty`). Keep such harnesses under `test/`;
 `package.json` `files` whitelists what ships, so `test/` never reaches npm.
 
 ```bash
-node test/pacing.test.js        # FORCE_PACING write-spacing harness (no printer)
+node test/pacing.test.js        # WRITE_MODE override harness: write spacing + write method (no printer)
 node test/status.test.js        # getStatus() decode harness (no printer)
 ```
 

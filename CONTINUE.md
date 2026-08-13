@@ -4,6 +4,12 @@
 > Merged to **main**; latest release **v1.4.0** (mobile: iPhone via Bluefy validated on the
 > B1 Pro, Android natively; `FORCE_PACING`; demo log panel; `getStatus()` with an
 > **unvalidated** decode — see `CHANGELOG.md`).
+> **Unreleased since 1.4.0:** the `getStatus()` decode is grounded in real B1 Pro
+> captures — lid/paper/tag/usedPaper/capacity confirmed (model 4097 only, per-field
+> `decoded.evidence`), `ribbonInserted` removed as wrong, `allPaper` → `printLimit`.
+> Plus `Niimbot.WRITE_MODE` (auto/fast/paced/acked, both directions — `FORCE_PACING` is
+> now an alias) and an always-visible connect line, because `IS_MAC` is **true on an
+> iPhone** and iOS has therefore only ever printed paced.
 > **M2-H validated** (id 4608, 300 dpi, b1 task + fast writes). The only residual
 > slowness is a full random-noise page at 300 dpi (BLE throughput, MTU ≈ 247 → ~2
 > frames/write) — not a real-label case. v4 sequence was tested on M2-H, no better.
@@ -61,8 +67,14 @@ noise, worst case) → only a minimal pause. Driver considered viable.
 
 ## Dev aids in the code
 
-- Driver logging is opt-in: set `Niimbot.DEBUG = true` in the console — this also
-  enables the `[niimbot t+…ms]` batch timing trace.
+- Driver logging is opt-in **except one line**: the connect summary
+  (`writeMode=… override=… effective=…`) always prints, because which write path a
+  print took must be readable without the packet dump that buries it. Everything else
+  needs `Niimbot.DEBUG = true`, which also enables the `[niimbot t+…ms]` batch trace.
+- `Niimbot.WRITE_MODE` = `null` | `"fast"` | `"paced"` | `"acked"` overrides the
+  detected write path (per write, so flippable mid-connection); the demo has it as a
+  *Write mode* selector. `FORCE_PACING` still works as a `"paced"`-only alias. Forcing
+  `"fast"` on an iPhone is the pending measurement — see README § *iOS coverage*.
 - `Niimbot.BUNDLE_MAX` (bytes/BLE write, default 240) is tunable at runtime; `0`
   disables bundling (one frame per write). Raise toward 480 if the MTU allows.
 - `Niimbot.VERSION` string + the demo cache-busts the driver script (shows the

@@ -24,6 +24,12 @@
     .logctl { display: flex; flex-wrap: wrap; align-items: center; gap: .3rem .9rem; margin: .6rem 0 .5rem; }
     .logctl button { padding: .4rem .7rem; font-size: .85rem; }
     .logctl label { margin: 0; font-size: .85rem; }
+    /* The write-mode selector is operated ONE-HANDED ON A PHONE — that is the device
+       the iOS fast/paced measurement runs on. So: a native <select> (its picker opens
+       at the bottom of the screen, in thumb reach), a ≥44 px tap target, and 16 px
+       type, below which iOS Safari/WebKit zooms the page on focus. */
+    #optwritemode { min-height: 44px; font-size: 1rem; padding: .35rem .5rem; }
+    .logctl label.wm { display: flex; align-items: center; gap: .4rem; font-size: .95rem; }
     #log {
       margin: 0; padding: .5rem; background: #f6f6f6; border-radius: 3px;
       font-family: ui-monospace, Menlo, Consolas, monospace; font-size: .72rem; line-height: 1.4;
@@ -64,7 +70,14 @@
     <div class="logctl">
       <button id="logcopy" type="button">Copy log</button>
       <button id="logclear" type="button">Clear</button>
-      <label><input type="checkbox" id="optpacing"> FORCE_PACING</label>
+      <label class="wm">Write mode:
+        <select id="optwritemode">
+          <option value="auto" selected>auto (detected)</option>
+          <option value="fast">fast (unacked, no gap)</option>
+          <option value="paced">paced (unacked + gap)</option>
+          <option value="acked">acked (with response)</option>
+        </select>
+      </label>
       <label><input type="checkbox" id="optdebug"> DEBUG (packet dump)</label>
     </div>
     <pre id="log"></pre>
@@ -167,19 +180,28 @@
     document.title = "niimbot demo — driver " + (Niimbot.VERSION || "?");
     console.log("[demo] loaded Niimbot driver version:", Niimbot.VERSION);
 
-    // Both toggles exist so a mobile tester can flip them without a console.
-    // DEBUG starts off on purpose: its packet dump buries the `writeMode=` line.
+    // Both controls exist so a mobile tester can drive them without a console.
+    // DEBUG starts off on purpose: its packet dump buries the `writeMode=` line
+    // (which is why that line is NOT gated behind DEBUG in the driver).
     Niimbot.DEBUG = false;
     $("optdebug").checked = Niimbot.DEBUG;
-    $("optpacing").checked = Niimbot.FORCE_PACING;
     $("optdebug").addEventListener("change", () => {
       Niimbot.DEBUG = $("optdebug").checked;
       console.log("[demo] Niimbot.DEBUG =", Niimbot.DEBUG);
     });
-    // Read per write, so flipping it mid-connection takes effect immediately.
-    $("optpacing").addEventListener("change", () => {
-      Niimbot.FORCE_PACING = $("optpacing").checked;
-      console.log("[demo] Niimbot.FORCE_PACING =", Niimbot.FORCE_PACING);
+    // Write mode: the four-way override (replaces 1.4.0's FORCE_PACING checkbox, which
+    // could only force pacing ON). Read per write, so changing it mid-connection takes
+    // effect on the next write — no reconnect. The select's values are exactly what
+    // Niimbot.WRITE_MODE accepts ("auto" being its spelling of null), and the driver
+    // logs the resulting EFFECTIVE mode itself, which is the line to read.
+    $("optwritemode").value = Niimbot.WRITE_MODE || "auto";
+    $("optwritemode").addEventListener("change", () => {
+      try {
+        Niimbot.WRITE_MODE = $("optwritemode").value;
+      } catch (e) {                       // can't happen from the <select>; never fail silently
+        fail(e);
+        $("optwritemode").value = Niimbot.WRITE_MODE || "auto";
+      }
     });
 
     if (!Niimbot.isSupported()) {
@@ -269,6 +291,153 @@
     $("text").addEventListener("input", refresh);
     refresh();
 
+    // ── Label memory: the size, remembered per RFID barcode ─────────────────────
+    // The tag identifies the roll (`barCode`) but does NOT carry its dimensions —
+    // the official app looks those up on Niimbot's server. So rather than curate a
+    // barcode→size table that can only ever cover rolls we have seen, we LEARN:
+    // whatever size the user actually printed with on a given barcode is what gets
+    // pre-selected the next time that roll shows up (niim.blue does the same).
+    //
+    // This lives in the demo and NOT in src/niimbot.js on purpose: the driver reads
+    // no config and owns no UI — it takes the model and the size from the caller
+    // (src/niimbot.js:1-21). It already exposes everything needed for this, via
+    // getStatus().decoded.rfid.barCode.
+    const LABEL_MEMORY_KEY = "niimbot-demo:size-by-barcode";
+
+    // localStorage throws for real, ordinary reasons (Safari private mode, cookies
+    // blocked, quota) — and this is a convenience layer over a driver whose print
+    // path must keep working. Every access is therefore contained: a failure costs
+    // the memory, never the print.
+    const labelMemory = {
+      all() {
+        try {
+          const map = JSON.parse(localStorage.getItem(LABEL_MEMORY_KEY) || "{}");
+          return map && typeof map === "object" ? map : {};
+        } catch (e) { return {}; }
+      },
+      recall(barCode) {
+        if (!barCode) return null;
+        const v = labelMemory.all()[barCode];
+        return typeof v === "string" ? v : null;
+      },
+      remember(barCode, sizeId) {
+        if (!barCode || !sizeId) return false;
+        try {
+          const map = labelMemory.all();
+          map[barCode] = sizeId;
+          localStorage.setItem(LABEL_MEMORY_KEY, JSON.stringify(map));
+          return true;
+        } catch (e) {
+          console.error("[label-memory] could not save: " + ((e && e.message) || e));
+          return false;
+        }
+      },
+      forget(barCode) {
+        try {
+          const map = labelMemory.all();
+          delete map[barCode];
+          localStorage.setItem(LABEL_MEMORY_KEY, JSON.stringify(map));
+          return true;
+        } catch (e) { return false; }
+      },
+      clear() {
+        try { localStorage.removeItem(LABEL_MEMORY_KEY); return true; } catch (e) { return false; }
+      },
+    };
+    // Exposed so the whole flow can be exercised from the console (or a phone's
+    // remote inspector) with no printer: labelMemory.remember("X","T50x30"),
+    // reload, labelMemory.recall("X").
+    window.labelMemory = labelMemory;
+
+    // The `consumablesType` enum, which is the same one the driver sends in
+    // SetLabelType (`model.label_type`, src/niimbot.js:683) — per the NIIMBOT
+    // Community Wiki. Used only to WARN; see reviewTag below.
+    const LABEL_TYPES = {
+      1: "with gaps", 2: "black", 3: "continuous", 4: "perforated",
+      5: "transparent", 6: "PVC tag", 10: "black mark gap", 11: "heat-shrink tube",
+    };
+
+    // Read a getStatus() result and, when a tag is present, report what we know and
+    // (with `autoSelect`) restore the remembered size. Says everything in the log
+    // panel: a SILENT auto-selection is worse than none, because the user stops
+    // checking the dropdown. Returns the barcode, or null when there is nothing to
+    // work with — `decoded` can be null, and `decoded.rfid` can be null (the printer
+    // never answered RfidInfo, normal on many models) or `{ tagPresent: false }`
+    // (no roll fitted). All three are ordinary cases, not errors.
+    function reviewTag(st, autoSelect) {
+      const rfid = st && st.decoded && st.decoded.rfid;
+      if (!rfid) {
+        console.log("[label-memory] printer sent no RFID info — no label memory for this roll.");
+        return null;
+      }
+      if (!rfid.tagPresent || !rfid.barCode) {
+        console.log("[label-memory] no consumable tag detected — no label memory for this roll.");
+        return null;
+      }
+      const bc = rfid.barCode;
+
+      // Cross-check the label TYPE. We warn and stop there: `consumablesType` is
+      // marked `inferred` in the driver's evidence map (only ever observed as 1), so
+      // it is not solid enough to override what the caller asked for — and blocking
+      // a print on an inferred field would be worse than a wrong guess.
+      const want = reg.models[$("model").value].label_type;
+      const got = rfid.consumablesType;
+      if (got != null && want != null && got !== want) {
+        console.error(
+          `[label-memory] ⚠ tag ${bc} reports label type ${got} (${LABEL_TYPES[got] || "unknown"}), but model `
+          + `"${$("model").value}" prints with type ${want} (${LABEL_TYPES[want] || "unknown"}). Nothing changed — `
+          + `consumablesType is "inferred", so check the roll yourself.`);
+      }
+
+      const remembered = labelMemory.recall(bc);
+      const cur = $("size").value;
+      if (!remembered) {
+        console.log(`[label-memory] tag ${bc}: no size remembered — keeping "${cur}". It is learned from the next successful print.`);
+        return bc;
+      }
+      if (!Array.prototype.some.call($("size").options, (o) => o.value === remembered)) {
+        console.log(`[label-memory] tag ${bc}: remembered size "${remembered}" is not offered for the selected model — keeping "${cur}".`);
+        return bc;
+      }
+      if (!autoSelect) {
+        console.log(`[label-memory] tag ${bc}: remembered size is "${remembered}" (currently selected: "${cur}").`);
+        return bc;
+      }
+      if (cur !== remembered) {
+        $("size").value = remembered;
+        refresh();
+      }
+      const s = reg.sizes[remembered];
+      console.log(`[label-memory] tag ${bc}: selected "${remembered}"${s ? ` (${s.label})` : ""} — remembered from a previous print on this roll.`);
+      return bc;
+    }
+    // Exposed for the same reason as labelMemory: with a hand-made getStatus()
+    // result — reviewTag({ decoded: { rfid: { tagPresent: true, barCode: "X",
+    // consumablesType: 1 } } }, true) — the auto-select path can be exercised from
+    // the console with no printer attached.
+    window.reviewTag = reviewTag;
+
+    // Learn from what the user actually did. Called only AFTER a print resolved
+    // successfully, with the buttons still disabled, so this status read can never
+    // interleave with another print. The tag is re-read here rather than reused from
+    // connect time, so swapping the roll mid-session is learned correctly. Every
+    // failure is swallowed: the label already came out, and a failed status read must
+    // not turn a good print into an error.
+    async function rememberAfterPrint(sizeId) {
+      try {
+        const st = await Niimbot.getStatus();
+        const rfid = st && st.decoded && st.decoded.rfid;
+        if (!rfid || !rfid.tagPresent || !rfid.barCode) return;
+        if (labelMemory.recall(rfid.barCode) === sizeId) {
+          console.log(`[label-memory] tag ${rfid.barCode} already remembered as "${sizeId}".`);
+        } else if (labelMemory.remember(rfid.barCode, sizeId)) {
+          console.log(`[label-memory] remembered tag ${rfid.barCode} → "${sizeId}".`);
+        }
+      } catch (e) {
+        console.log("[label-memory] could not read the tag after printing (" + ((e && e.message) || e) + ") — nothing remembered.");
+      }
+    }
+
     // Connect and ask the printer which model it is (B1 and B1 Pro share the BLE
     // name), then auto-select the matching registry model + size — like niim.blue.
     $("identify").addEventListener("click", async () => {
@@ -291,6 +460,13 @@
         } else {
           status(`Identified: ${info.label} — ${detail}. No matching model in registry — selection left as is.`);
         }
+        // Restore the size remembered for this roll. Caught separately: the identify
+        // already succeeded, and a status read that fails must not undo that.
+        try {
+          reviewTag(await Niimbot.getStatus(), true);
+        } catch (e) {
+          console.log("[label-memory] status read after identify failed (" + ((e && e.message) || e) + ") — nothing restored.");
+        }
       } catch (e) {
         fail(e);
       } finally {
@@ -308,11 +484,11 @@
       }
     });
 
-    // Consumable status. The decoded fields come from niimbluelib's layouts and are
-    // NOT confirmed on hardware, so what matters here is the HEX DUMP of `raw`: paste
-    // it (Copy log) next to what the printer physically shows — lid open/shut, paper
-    // in/out, tag present — and the layout can be settled for real. Nothing in the
-    // print path reads any of this.
+    // Consumable status. Lid/paper/tag are confirmed on a B1 Pro; everything else is
+    // still niimbluelib's transcription, which is why the HEX DUMP of `raw` stays the
+    // useful output: paste it (Copy log) next to what the printer physically shows —
+    // lid open/shut, paper in/out, tag present — and another field can be settled. Per
+    // field trust is in `decoded.evidence`. Nothing in the print path reads any of this.
     $("readstatus").addEventListener("click", async () => {
       $("readstatus").disabled = true;
       try {
@@ -324,9 +500,19 @@
         console.log(`[status] raw rfid: ${dump(st.raw.rfid)}`);
         console.log(`[status] decoded: ${JSON.stringify(st.decoded)}`);
         const hb = st.decoded && st.decoded.heartbeat;
+        const ev = (st.decoded && st.decoded.evidence && st.decoded.evidence.heartbeat) || {};
+        // Say per field how much to trust it — a blanket label would be wrong in both
+        // directions now that lid/paper are confirmed and chargeLevel still is not.
+        const mark = (k) => (ev[k] === "observed" ? "" : ` (${ev[k] || "?"})`);
         status(hb
-          ? `status (unvalidated): lid ${hb.lidClosed ? "closed" : "open"}, paper ${hb.paperInserted ? "in" : "out"}, charge ${hb.chargeLevel}. See the log for the raw dump.`
+          ? `status: lid ${hb.lidClosed ? "closed" : "open"}${mark("lidClosed")}, `
+            + `paper ${hb.paperInserted ? "in" : "out"}${mark("paperInserted")}, `
+            + `charge ${hb.chargeLevel}${mark("chargeLevel")}. See the log for the raw dump.`
           : "status read — layout not recognised, raw bytes are in the log.");
+        // Report the label memory, but do NOT auto-select here: this button is a
+        // read, and moving the dropdown under a user who just chose a size would be
+        // the surprise the log line is supposed to prevent.
+        reviewTag(st, false);
       } catch (e) {
         fail(e);
       } finally {
@@ -336,12 +522,14 @@
 
     $("print").addEventListener("click", async () => {
       const model = reg.models[$("model").value];
-      const size = reg.sizes[$("size").value];
+      const sizeId = $("size").value;
+      const size = reg.sizes[sizeId];
       const canvas = drawTest(size, $("text").value);
       $("print").disabled = true;
       try {
         await Niimbot.printImage(canvas.toDataURL("image/png"), { model, size, onProgress: status });
         status("ok — label sent.");
+        await rememberAfterPrint(sizeId);
       } catch (e) {
         fail(e);
       } finally {
@@ -353,12 +541,14 @@
     // Use this whenever the labels are identical — the data crosses BLE only once.
     $("print3copies").addEventListener("click", async () => {
       const model = reg.models[$("model").value];
-      const size = reg.sizes[$("size").value];
+      const sizeId = $("size").value;
+      const size = reg.sizes[sizeId];
       const canvas = drawTest(size, $("text").value);
       $("print3copies").disabled = true;
       try {
         await Niimbot.printImage(canvas.toDataURL("image/png"), { model, size, copies: 3, onProgress: status });
         status("ok — 3 copies (single upload) sent.");
+        await rememberAfterPrint(sizeId);
       } catch (e) {
         fail(e);
       } finally {
@@ -368,7 +558,8 @@
 
     $("print3").addEventListener("click", async () => {
       const model = reg.models[$("model").value];
-      const size = reg.sizes[$("size").value];
+      const sizeId = $("size").value;
+      const size = reg.sizes[sizeId];
       // 3 distinct labels so the print order — and the absence of a retract
       // between them — is obvious on the paper. Realistic (light) labels so the
       // non-copies path streams continuously; the dense buttons cover worst case.
@@ -381,6 +572,7 @@
       try {
         await Niimbot.printBatch(urls, { model, size, onProgress: status });
         status("ok — 3-label batch sent.");
+        await rememberAfterPrint(sizeId);
       } catch (e) {
         fail(e);
       } finally {
@@ -393,7 +585,8 @@
     // LARGEST label here to push the most data through the look-ahead pipeline.
     async function runDense(count) {
       const model = reg.models[$("model").value];
-      const size = reg.sizes[$("size").value];
+      const sizeId = $("size").value;
+      const size = reg.sizes[sizeId];
       const off = document.createElement("canvas");
       const urls = [];
       for (let n = 1; n <= count; n++) {
@@ -405,6 +598,7 @@
       try {
         await Niimbot.printBatch(urls, { model, size, onProgress: status });
         status(`ok — ${count} dense labels sent.`);
+        await rememberAfterPrint(sizeId);
       } catch (e) {
         fail(e);
       } finally {

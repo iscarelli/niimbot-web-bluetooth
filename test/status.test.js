@@ -2,10 +2,16 @@
  * that `raw` is exact and `decoded` never guesses?
  *
  * No dependencies, no runner: `node test/status.test.js`. Exits non-zero on failure.
- * NO PRINTER IS INVOLVED. Every response here is bytes this file made up, shaped to
- * niimbluelib's documented layouts — so a PASS proves the DECODER matches the layouts
- * we transcribed, NOT that a real printer sends those layouts. That is still open (see
- * docs/protocol-v4.md § Consumable status).
+ * NO PRINTER IS INVOLVED IN RUNNING THIS. Two kinds of fixture live here and the
+ * difference is the whole point:
+ *   RECORDED   the six B1 Pro heartbeats and two RfidInfo payloads below are bytes a
+ *              real printer sent (2026-08-11, supplied to this repo — see
+ *              docs/protocol-v4.md § Consumable status for the physical state recorded
+ *              alongside each). Asserting against them checks the decode against
+ *              hardware, which is why they are worth more than the rest of this file.
+ *   SYNTHETIC  everything else is bytes this file made up to exercise the refusal paths
+ *              (unknown length, silent RFID, malformed RFID). A PASS there proves the
+ *              decoder matches a transcribed layout, NOT that a printer sends it.
  *
  * `globalThis.navigator` MUST exist before src/niimbot.js loads: IS_MAC reads
  * navigator.platform at load time (see CLAUDE.md). Node ≥ 21 already defines a
@@ -42,6 +48,10 @@ function deliver(cmd, data) { notify && notify({ target: { value: frame(cmd, dat
 // What the fake answers to 0xDC / 0x1A for the case under test. `null` = stay silent,
 // which is how the driver's timeout paths get exercised.
 let reply = { heartbeat: null, rfid: null };
+// Low byte of the model id the fake reports: 0x01 → 4097 (B1 Pro, the model the
+// captures come from), 0x00 → 4096 (B1, never captured — used to prove the hardware
+// claim does NOT leak to other models).
+let modelIdLow = 0x01;
 
 // Answered synchronously inside the write, exactly as in pacing.test.js.
 function handle(bytes) {
@@ -50,8 +60,8 @@ function handle(bytes) {
   if (cmd === 0xa5) {                          // PrinterStatusData → protocol 5
     const d = new Array(13).fill(0); d[11] = 3; d[12] = 5;
     deliver(0xb5, d);
-  } else if (cmd === 0x40 && sub === 0x08) {   // PrinterModelId → 4097 = B1 Pro
-    deliver(0x48, [0x10, 0x01]);               // task "v4" → connect runs NO handshake
+  } else if (cmd === 0x40 && sub === 0x08) {   // PrinterModelId; 4097 = B1 Pro, 4096 = B1
+    deliver(0x48, [0x10, modelIdLow]);         // 4097 → task "v4" → connect runs NO handshake
   } else if (cmd === 0x40) {
     deliver(0x48, [0x00]);
   } else if (cmd === 0xdc) {                   // Heartbeat
@@ -98,28 +108,186 @@ const bytes = (u8) => Array.from(u8 || []);
   await Niimbot.connect(MODEL);
   assert.equal(Niimbot.printer.modelId, 4097, "fake printer should identify as B1 Pro");
 
+  // ══ RECORDED — real B1 Pro bytes ═══════════════════════════════════════════
+  // Six 0xD9 heartbeats captured on a Niimbot B1 Pro (model id 4097) on 2026-08-11,
+  // with the physical state written down beside each. c1–c4 isolate one change at a
+  // time against a control; c5/c6 bracket a 3-label print job. Bytes idx7..12 were
+  // recorded as `00 …`, so they are padded with zeros here — inert, because nothing
+  // past idx6 is decoded. The full derivation is in docs/protocol-v4.md.
+  const cap = (b) => b.concat(new Array(13 - b.length).fill(0x00));
+  //              idx0  idx1  idx2  idx3  idx4  idx5  idx6
+  const C1 = cap([0x1f, 0x58, 0x50, 0x48, 0x01, 0x01, 0x00]);  // lid OPEN,   no paper, no tag
+  const C2 = cap([0x1f, 0x50, 0x50, 0x48, 0x00, 0x00, 0x01]);  // lid closed, paper in, tag read
+  const C3 = cap([0x1f, 0x53, 0x50, 0x48, 0x00, 0x01, 0x00]);  // lid closed, no paper, no tag
+  const C4 = cap([0x1f, 0x50, 0x50, 0x48, 0x00, 0x00, 0x00]);  // lid closed, paper in, NO tag
+  const C5 = cap([0x1f, 0x50, 0x50, 0x49, 0x00, 0x00, 0x01]);  // 22:15:16, just before 3 labels
+  const C6 = cap([0x1f, 0x4a, 0x50, 0x4a, 0x00, 0x00, 0x01]);  // 22:15:40, just after them
+
+  // Roll A: the real 41-byte RfidInfo payload from the same session. `used` is the one
+  // field that moved (6 before the job → 9 after, for exactly 3 labels).
+  const ascii = (s) => Array.from(s).map((c) => c.charCodeAt(0));
+  const rollA = (used) => [].concat(
+    [0x88, 0x1d, 0x15, 0xa4, 0xe1, 0x97, 0x00, 0x00],       // uuid
+    [0x08], ascii("11262111"),                              // barCode
+    [0x10], ascii("PC0G229321004571"),                      // serialNumber
+    [0x01, 0x14],                                           // 276 — niimbluelib's "allPaper" = printLimit
+    [0x00, used],                                           // usedPaper
+    [0x01],                                                 // consumablesType
+    [0x00, 0xe6]                                            // capacity = 230 = the new roll's labels
+  );
+  const RFID5 = rollA(6), RFID6 = rollA(9);
+  // Roll B: a second physical roll. Everything differs — uuid, barcode, serial, counts —
+  // which is what makes the printLimit / capacity ratio a relationship and not a
+  // coincidence: 120/100 here, 276/230 on roll A, both exactly 1.2.
+  const ROLL_B = [
+    0x88, 0x1d, 0x19, 0x3c, 0x03, 0x13, 0x10, 0x80,
+    0x08, 0x30, 0x32, 0x32, 0x37, 0x32, 0x33, 0x33, 0x33,
+    0x10, 0x50, 0x4a, 0x30, 0x48, 0x39, 0x32, 0x35, 0x36, 0x37, 0x34, 0x30, 0x30, 0x30, 0x34, 0x37, 0x33,
+    0x00, 0x78, 0x00, 0x03, 0x01, 0x00, 0x64,
+  ];
+  assert.equal(RFID5.length, 41, "roll A's recorded RfidInfo payload is 41 bytes");
+  assert.equal(ROLL_B.length, 41, "roll B's recorded RfidInfo payload is 41 bytes");
+
+  const HB_EXPECT = (temp, lid, paper, tag) => ({
+    layout: "advanced2/13", chargeLevel: 0x50, temp,
+    lidClosed: lid, paperInserted: paper, paperRfidSuccess: tag,
+  });
+  // Trust is per field: three booleans confirmed on hardware, temp seen to move but
+  // with an unverified unit, chargeLevel never varied at all.
+  const HB_EV = {
+    lidClosed: "observed", paperInserted: "observed", paperRfidSuccess: "observed",
+    temp: "varies", chargeLevel: "inferred",
+  };
+
+  const CAPTURES = [
+    ["c1", C1, HB_EXPECT(72, false, false, false)],
+    ["c2", C2, HB_EXPECT(72, true, true, true)],
+    ["c3", C3, HB_EXPECT(72, true, false, false)],
+    ["c4", C4, HB_EXPECT(72, true, true, false)],
+    ["c5", C5, HB_EXPECT(73, true, true, true)],
+    ["c6", C6, HB_EXPECT(74, true, true, true)],
+  ];
+  let st;
+  for (const [name, data, expect] of CAPTURES) {
+    reply = { heartbeat: { cmd: 0xd9, data }, rfid: null };
+    st = await Niimbot.getStatus(FAST);
+    assert.deepEqual(bytes(st.raw.heartbeat), data, `${name}: raw.heartbeat must be the exact captured bytes`);
+    assert.deepEqual(st.decoded.heartbeat, expect, `${name}: decoded heartbeat`);
+    assert.deepEqual(st.decoded.evidence.heartbeat, HB_EV, `${name}: per-field evidence`);
+    assert.equal(st.confidence, "validated", `${name}: hardware-confirmed fields make confidence 'validated'`);
+    // A field that is confidently wrong is worse than an absent one: 1.4.0 reported
+    // ribbonInserted:true on this direct-thermal printer. It must not come back.
+    for (const gone of ["ribbonInserted", "ribbonRfidSuccess"]) {
+      assert.equal(gone in st.decoded.heartbeat, false, `${name}: ${gone} must not be decoded (B1 Pro has no ribbon)`);
+      assert.equal(gone in st.decoded.evidence.heartbeat, false, `${name}: ${gone} must not be marked either`);
+    }
+    // idx1 was once read as an error-code nibble (0 none / 8 lid open / 3 out of paper).
+    // c6 refutes it: 0x4a right after a clean print, when nothing is wrong. Nothing may
+    // name idx1 until a capture explains it.
+    for (const k in st.decoded.heartbeat) {
+      assert.equal(/error/i.test(k), false, `${name}: idx1 is unexplained — no error field may be decoded (found "${k}")`);
+    }
+  }
+  console.log("ok  (h1) six recorded B1 Pro heartbeats: lid/paper/tag decode, no ribbon, no error enum");
+
+  // c1 vs c3 move the lid alone; c3 vs c4 move the paper alone; c2 vs c4 move the tag
+  // alone. Spelling the controls out here is what stops a "fits all six" rewrite.
+  const dec = async (data) => { reply = { heartbeat: { cmd: 0xd9, data }, rfid: null }; return (await Niimbot.getStatus(FAST)).decoded.heartbeat; };
+  const [hc1, hc2, hc3, hc4] = [await dec(C1), await dec(C2), await dec(C3), await dec(C4)];
+  assert.notEqual(hc1.lidClosed, hc3.lidClosed, "c1 vs c3: only the lid moved, so only lidClosed may differ");
+  assert.equal(hc1.paperInserted, hc3.paperInserted, "c1 vs c3: paper was absent in both");
+  assert.notEqual(hc3.paperInserted, hc4.paperInserted, "c3 vs c4: only the paper moved");
+  assert.equal(hc3.lidClosed, hc4.lidClosed, "c3 vs c4: the lid was shut in both");
+  assert.notEqual(hc2.paperRfidSuccess, hc4.paperRfidSuccess, "c2 vs c4: only the tag moved");
+  assert.equal(hc2.paperInserted, hc4.paperInserted, "c2 vs c4: paper was loaded in both — a missing tag is not missing paper");
+  console.log("ok  (h2) each confirmed field moves with its own control and nothing else");
+
+  // The recorded RFID payload must consume exactly, and usedPaper must show the job.
+  reply = { heartbeat: { cmd: 0xd9, data: C5 }, rfid: RFID5 };
+  st = await Niimbot.getStatus(FAST);
+  assert.deepEqual(bytes(st.raw.rfid), RFID5, "raw.rfid must be the exact captured bytes");
+  assert.deepEqual(st.decoded.rfid, {
+    tagPresent: true, uuid: "881d15a4e1970000", barCode: "11262111",
+    serialNumber: "PC0G229321004571", printLimit: 276, usedPaper: 6, consumablesType: 1,
+    capacity: 230,
+  }, "roll A: recorded RfidInfo fields");
+  assert.deepEqual(st.decoded.evidence.rfid, {
+    tagPresent: "inferred", uuid: "inferred", barCode: "inferred", serialNumber: "inferred",
+    consumablesType: "inferred", printLimit: "inferred",
+    usedPaper: "observed", capacity: "observed",
+  }, "roll A: recorded RfidInfo per-field evidence");
+  // 276 is NOT a quantity of paper: the roll holds 230 when new, and it did not move
+  // across the print job. niimbluelib calls it `allPaper`; that name must not survive.
+  assert.equal("allPaper" in st.decoded.rfid, false, "the misleading `allPaper` name must not be exposed");
+
+  reply.rfid = RFID6;
+  st = await Niimbot.getStatus(FAST);
+  assert.equal(st.decoded.rfid.usedPaper, 9, "usedPaper must read 9 after the 3-label job");
+  assert.equal(st.decoded.rfid.usedPaper - 6, 3, "usedPaper moved by exactly the 3 labels printed");
+  assert.equal(st.decoded.rfid.capacity, 230, "capacity is the roll's size and must not move with a job");
+  assert.equal(st.decoded.rfid.printLimit, 276, "printLimit did not move either — it is a cap, not a counter");
+  console.log("ok  (h3) roll A: usedPaper 6→9 for 3 labels, capacity 230 and printLimit 276 both static");
+
+  // Roll B — a different physical roll, and the reason printLimit has a name at all.
+  reply.rfid = ROLL_B;
+  st = await Niimbot.getStatus(FAST);
+  assert.deepEqual(st.decoded.rfid, {
+    tagPresent: true, uuid: "881d193c03131080", barCode: "02272333",
+    serialNumber: "PJ0H925674000473", printLimit: 120, usedPaper: 3, consumablesType: 1,
+    capacity: 100,
+  }, "roll B: recorded RfidInfo fields");
+  const ratio = (r) => r.printLimit / r.capacity;
+  assert.equal(ratio(st.decoded.rfid), 1.2, "roll B: printLimit is 120 % of capacity");
+  reply.rfid = RFID5;
+  assert.equal(ratio((await Niimbot.getStatus(FAST)).decoded.rfid), 1.2, "roll A: the same 1.2, exactly");
+  // Same on both rolls → never seen to vary → must not be sold as confirmed.
+  assert.equal(st.decoded.evidence.rfid.consumablesType, "inferred",
+    "consumablesType read 1 on both rolls, so nothing here confirms what it means");
+  assert.equal(st.decoded.evidence.rfid.printLimit, "inferred",
+    "two rolls and a wiki citation is a strong inference, not a validated field");
+  console.log("ok  (h3') roll B: printLimit/capacity = 1.2 on both rolls, still inferred");
+
+  // readiness() reports; it is a helper for the APP, never a gate here.
+  reply = { heartbeat: { cmd: 0xd9, data: C2 }, rfid: null };
+  assert.deepEqual(Niimbot.readiness(await Niimbot.getStatus(FAST)),
+    { ready: true, reasons: [], evidence: "observed" }, "c2: lid shut + paper in → ready");
+  reply.heartbeat.data = C1;
+  assert.deepEqual(Niimbot.readiness(await Niimbot.getStatus(FAST)),
+    { ready: false, reasons: ["lid open", "no paper"], evidence: "observed" }, "c1: both faults reported");
+  assert.deepEqual(Niimbot.readiness({ decoded: null }),
+    { ready: null, reasons: ["nothing decoded that bears on readiness"], evidence: null },
+    "nothing decoded must be 'cannot tell' (null), never 'not ready' (false)");
+  console.log("ok  (h4) readiness() reports ready/blocked/cannot-tell");
+
+  // ══ SYNTHETIC — made-up bytes, exercising the refusal paths ════════════════
   // ── (a) A layout we decode: Advanced2 (0xD9), 9 bytes ──────────────────────
-  // [_, _, charge, temp, lid, paper, paperRfid, ribbonRfid, ribbon]
-  //  0 = lid closed, 0 = paper inserted, non-0 = RFID read ok (niimbluelib polarity).
+  // Same opcode, a length never captured, so nothing may claim hardware backing.
   const HB = [0x00, 0x00, 0x03, 0x19, 0x00, 0x00, 0x01, 0x00, 0x01];
   // uuid(8) · barCode "AB" · serial "S1" · allPaper 100 · usedPaper 3 · type 1
   const RFID = [1, 2, 3, 4, 5, 6, 7, 8, 2, 0x41, 0x42, 2, 0x53, 0x31, 0x00, 0x64, 0x00, 0x03, 0x01];
   reply = { heartbeat: { cmd: 0xd9, data: HB }, rfid: RFID };
-  let st = await Niimbot.getStatus(FAST);
+  st = await Niimbot.getStatus(FAST);
 
   assert.deepEqual(bytes(st.raw.heartbeat), HB, "raw.heartbeat must be the exact bytes the printer sent");
   assert.equal(st.raw.heartbeatCmd, 0xd9, "raw must record the response opcode (it selects the layout)");
   assert.deepEqual(bytes(st.raw.rfid), RFID, "raw.rfid must be the exact bytes the printer sent");
-  assert.equal(st.confidence, "inferred", "a decoded status is 'inferred', never 'validated'");
+  // A mixed status, and the reason per-field evidence exists: this heartbeat length was
+  // never captured (nothing in it is confirmed) while the RFID payload is self-describing
+  // and still yields a confirmed usedPaper on this model. The coarse top-level
+  // `confidence` reports the strongest thing present; `evidence` is where the truth is.
+  assert.equal(st.confidence, "validated", "one observed RFID field is enough for the coarse floor");
   assert.deepEqual(st.decoded.heartbeat, {
     layout: "advanced2/9",
     chargeLevel: 3, temp: 0x19,
     lidClosed: true, paperInserted: true, paperRfidSuccess: true,
-    ribbonRfidSuccess: false, ribbonInserted: false,
   }, "Advanced2 heartbeat fields");
+  assert.deepEqual(st.decoded.evidence.heartbeat, {
+    lidClosed: "inferred", paperInserted: "inferred", paperRfidSuccess: "inferred",
+    temp: "inferred", chargeLevel: "inferred",
+  }, "a length we never captured is inferred right across");
   assert.deepEqual(st.decoded.rfid, {
     tagPresent: true, uuid: "0102030405060708", barCode: "AB", serialNumber: "S1",
-    allPaper: 100, usedPaper: 3, consumablesType: 1,
+    printLimit: 100, usedPaper: 3, consumablesType: 1,
   }, "RfidInfo fields");
   console.log("ok  (a) known layout decoded, raw exact");
 
@@ -127,8 +295,8 @@ const bytes = (u8) => Array.from(u8 || []);
   reply.heartbeat = { cmd: 0xd9, data: [0, 0, 4, 0x1a, 0x01, 0x01, 0x00, 0x01, 0x00] };
   st = await Niimbot.getStatus(FAST);
   assert.deepEqual(
-    { l: st.decoded.heartbeat.lidClosed, p: st.decoded.heartbeat.paperInserted, r: st.decoded.heartbeat.paperRfidSuccess, ri: st.decoded.heartbeat.ribbonInserted },
-    { l: false, p: false, r: false, ri: true },
+    { l: st.decoded.heartbeat.lidClosed, p: st.decoded.heartbeat.paperInserted, r: st.decoded.heartbeat.paperRfidSuccess },
+    { l: false, p: false, r: false },
     "heartbeat booleans must follow the bytes"
   );
 
@@ -153,6 +321,10 @@ const bytes = (u8) => Array.from(u8 || []);
   assert.deepEqual(st.decoded.heartbeat, {
     layout: "advanced1/13", lidClosed: true, chargeLevel: 2, paperInserted: true, paperRfidSuccess: true,
   }, "Advanced1 13-byte layout");
+  assert.deepEqual(st.decoded.evidence.heartbeat, {
+    lidClosed: "inferred", chargeLevel: "inferred", paperInserted: "inferred", paperRfidSuccess: "inferred",
+  }, "Advanced1 has never been captured here — every field stays niimbluelib's");
+  assert.equal(st.confidence, "inferred", "…so it cannot be 'validated'");
   // A heartbeat variant niimbluelib decodes no fields from (Basic 0xDE) is not guessed.
   reply = { heartbeat: { cmd: 0xde, data: [0x01] }, rfid: null };
   st = await Niimbot.getStatus(FAST);
@@ -195,18 +367,46 @@ const bytes = (u8) => Array.from(u8 || []);
   assert.equal(st.decoded.rfid, null, "a truncated payload must not be half-decoded");
   console.log("ok  (e) RFID payload shapes: no-tag / capacity / trailing / truncated");
 
+  // ── (f) The hardware claim must NOT leak to a model we never captured ──────
+  // The NIIMBOT Community Wiki records that lid-closed polarity is INVERTED on some
+  // models, so the very same byte could mean the opposite on a B1 (4096) or M2-H
+  // (4608). Identical bytes, different printer → still decoded, never "observed".
+  await Niimbot.disconnect();
+  modelIdLow = 0x00;                                     // 4096 = B1, never captured here
+  reply = { heartbeat: { cmd: 0xd9, data: C2 }, rfid: RFID5 };
+  await Niimbot.connect(MODEL);
+  assert.equal(Niimbot.printer.modelId, 4096, "fake printer should now identify as a B1");
+  st = await Niimbot.getStatus(FAST);
+  assert.equal(st.confidence, "inferred", "the same bytes from an uncaptured model must not be 'validated'");
+  assert.deepEqual(st.decoded.evidence.heartbeat, {
+    lidClosed: "inferred", paperInserted: "inferred", paperRfidSuccess: "inferred",
+    temp: "inferred", chargeLevel: "inferred",
+  }, "no heartbeat field may be marked observed on a model we have never captured");
+  assert.equal(st.decoded.evidence.rfid.usedPaper, "inferred", "nor may an RFID field");
+  assert.equal(st.decoded.evidence.rfid.capacity, "inferred");
+  assert.equal(st.decoded.evidence.rfid.printLimit, "inferred", "…and printLimit was never a hardware claim anywhere");
+  assert.equal(Niimbot.readiness(st).evidence, "inferred", "readiness must report the weakest evidence it used");
+  console.log("ok  (f) the hardware claim is scoped to model 4097 (B1 Pro) and does not leak");
+
   // ── The whole point: this must not be wired into printing ──────────────────
+  // Validating lid/paper on hardware is exactly when this gate gets tempting, so it
+  // now covers readiness() too: a reporter that acquires a caller inside the driver
+  // has become a gate.
   const src = require("node:fs").readFileSync(require("node:path").join(__dirname, "../src/niimbot.js"), "utf8");
-  const callers = src.split("\n").filter((l) =>
-    /getStatus\s*\(/.test(l) &&                 // a mention with a paren…
-    !/function\s+getStatus\s*\(/.test(l) &&     // …that is not its own definition…
-    !/^\s*(\/\/|\*)/.test(l));                  // …and not a comment about it.
-  assert.equal(callers.length, 0, `no code in the driver may CALL getStatus(); found: ${callers.join(" | ")}`);
+  const uncalled = (name) => src.split("\n").filter((l) =>
+    new RegExp(`${name}\\s*\\(`).test(l) &&              // a mention with a paren…
+    !new RegExp(`function\\s+${name}\\s*\\(`).test(l) && // …that is not its own definition…
+    !/^\s*(\/\/|\*)/.test(l));                           // …and not a comment about it.
+  for (const name of ["getStatus", "readiness"]) {
+    const callers = uncalled(name);
+    assert.equal(callers.length, 0, `no code in the driver may CALL ${name}(); found: ${callers.join(" | ")}`);
+  }
 
   await Niimbot.disconnect();
   await assert.rejects(() => Niimbot.getStatus(), /not connected/i, "after disconnect it must throw again");
 
-  console.log("PASS — getStatus() exposes status without enforcing it. NO PRINTER INVOLVED;");
-  console.log("       the field offsets are niimbluelib's and remain UNCONFIRMED on hardware.");
+  console.log("PASS — getStatus() exposes status without enforcing it. NO PRINTER RAN THIS TEST:");
+  console.log("       the six B1 Pro captures are recorded bytes supplied to the repo, and only");
+  console.log("       lid/paper/tag/usedPaper/capacity carry a hardware claim — on model 4097 only.");
   process.exit(0);
 })().catch((e) => { console.error("FAIL —", e && e.message ? e.message : e); process.exit(1); });

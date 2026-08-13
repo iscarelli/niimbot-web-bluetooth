@@ -5,6 +5,120 @@ All notable changes to this project are documented here. The format is based on
 [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
+### Fixed
+- **`IS_MAC` is `true` on an iPhone, and the 1.4.0 notes said the opposite.** The check
+  (`src/niimbot.js:107`) falls back to matching `/Mac/i` against `navigator.platform`
+  plus `navigator.userAgent`, and **every iOS user agent contains `"like Mac OS X"`** —
+  so iOS matches. Measured on the device: the iPhone's connect line reads `mac=true`.
+  Three consequences, all of them corrections rather than changes in behaviour:
+  1. **Every iPhone print so far ran on the *paced* path**, not `"fast"`. The 1.4.0
+     notes and README claimed the opposite and concluded that the macOS burst-drop is
+     macOS-specific. **That conclusion had no basis** — the unpaced path has never run
+     on iOS — and it is deleted, not softened.
+  2. The short inter-label pause observed on the iPhone was attributed to BLE
+     throughput. It is more likely `PACE_MS`.
+  3. `FORCE_PACING` was redundant on iPhone from the start: `IS_MAC` already paced
+     there. The feature is fine; its documented reason for existing was not.
+  Whether iOS *needs* pacing is now an open question, and answering it needs an
+  override that can force `"fast"` — which `FORCE_PACING`, being one-directional,
+  cannot do.
+- **`getStatus()` reported `ribbonInserted: true` in 1.4.0, and it was wrong.** The B1
+  Pro is direct-thermal and has no ribbon at all, yet the field read `true` in every one
+  of six real captures. It came from a niimbluelib offset that was never checked against
+  a printer. **`ribbonInserted` and `ribbonRfidSuccess` are removed from `decoded`** —
+  a field that is confidently wrong is worse than an absent one, and the bytes are still
+  in `raw` for whoever settles them.
+- `allPaper` is no longer exposed under that name. It read 276 on a roll holding 230
+  labels and did not move across a print job, so it is not a paper total. It is now
+  **`printLimit`**, marked `inferred`: on two different rolls `printLimit / capacity` is
+  exactly 1.2, and the NIIMBOT Community Wiki's RFID tag map documents a "print limited
+  cnt" — the consumable's DRM cap, provisioned at 120 % of nominal.
+
+### Added
+- **Demo: the label size is remembered per RFID barcode.** The tag identifies the roll
+  but does not carry its dimensions (the official app looks them up on Niimbot's server),
+  and picking the wrong size silently ruins labels. So the demo learns rather than
+  guesses: on *Connect & identify* it reads `getStatus().decoded.rfid.barCode` and
+  pre-selects the size that barcode was last **successfully printed** with, saying so in
+  the log panel — a silent auto-selection is worse than none, because the user stops
+  checking. On a miss it selects nothing. *Read status* reports the memory without moving
+  the dropdown. If the tag's `consumablesType` disagrees with the selected model's
+  `label_type` it **warns and stops there**: that field is marked `inferred`, so it is not
+  solid enough to override the caller.
+  **Nothing changed in `src/niimbot.js`** — this is application state, and the driver
+  reads no config and owns no UI. The pattern (~20 lines, `localStorage`) is written up
+  in README § *Demo* so another app can copy it. Never run against a real tag: the
+  auto-select path is verified only from the console with hand-made status objects.
+- **`Niimbot.WRITE_MODE` — the write-path override, now bidirectional.** `null` (auto,
+  default) · `"fast"` · `"paced"` · `"acked"`; anything else **throws** instead of being
+  silently ignored. Read **per write**, so it can be flipped on an open connection, and
+  it never overwrites the DETECTED mode — `Niimbot.DETECTED_WRITE_MODE` and
+  `Niimbot.EFFECTIVE_WRITE_MODE` expose both.
+  This exists to make the open iOS question measurable: `IS_MAC` is `true` on an iPhone,
+  so iOS has only ever printed **paced**, and 1.4.0's `FORCE_PACING` could only force
+  pacing *on*. Forcing `"fast"` on an iPhone and looking at the paper is the experiment —
+  README § *iOS coverage* has the procedure.
+  Forcing `"fast"` on a model `MODEL_IDS` marks `paced` (the 203 dpi B1) **logs a warning
+  and is still obeyed**: that combination is a diagnostic, not a setting, and a driver
+  that refused it would block the measurement it exists to enable.
+- **The connect summary line is no longer gated behind `DEBUG`**, and now reads
+  `writeMode=<detected> override=<…> effective=<…>` next to the existing
+  `forcePacing=`/`bundle=`/`mac=`/`pace=` fields. Which path a print took was previously
+  visible only with the packet dump on — which buries it — and that invisibility is how
+  1.4.0 shipped a wrong conclusion about iOS. Setting `WRITE_MODE` logs the new effective
+  mode too. One line per connect; everything else stays behind `DEBUG`.
+- Demo: the `FORCE_PACING` checkbox is replaced by a **Write mode selector** (auto /
+  fast / paced / acked). A native `<select>` with a 44 px tap target and 16 px type —
+  one-handed on a phone, which is the device the iOS measurement runs on.
+- `test/pacing.test.js` now drives **all four override positions** against a fake
+  characteristic: no gap for `"fast"`, ~`PACE_MS` for `"paced"`, `writeValueWithResponse`
+  for `"acked"`, and the detected behaviour for `null` (checked on both a `paced: false`
+  and a `paced: true` model, so an always-pacing driver would fail it). It also asserts
+  the invalid-value throw, the pacing warning firing only where it should, the
+  `FORCE_PACING` alias round-tripping in both directions, and that the detected mode is
+  never mutated by an override. No printer involved.
+- **The `getStatus()` decode is now grounded in real B1 Pro captures**, and `decoded`
+  carries an **`evidence` map** marking every field `"observed"` (moved on hardware here,
+  exactly as named), `"varies"` (moved, meaning unsettled) or `"inferred"` (not confirmed
+  here). `lidClosed`, `paperInserted`, `paperRfidSuccess`, `usedPaper` and `capacity` are
+  **`"observed"` on the B1 Pro (model id 4097) only** — on any other model, including the
+  B1 and M2-H which have never been captured, every field falls back to `"inferred"`,
+  because lid-closed polarity is documented to be inverted on some printers.
+  `confidence` gains the value **`"validated"`** as a coarse floor over that map;
+  `{ raw, decoded, confidence }` and the exactness of `raw` are unchanged.
+- `temp` is kept and marked `"varies"`: it read 72 idle, 73 just before a job and 74
+  right after three labels, so it tracks something thermal — but 72–74 is high for °C on
+  a lightly-used printhead, so the unit is not claimed.
+- `Niimbot.readiness(status)` — a **pure reporter** over a `getStatus()` result:
+  `{ ready, reasons, evidence }`, where `ready` is `null` when it cannot tell rather than
+  collapsing that into "not ready". It is deliberately **not wired into any print path**;
+  no print path calls `getStatus()` or branches on it, validated fields or not.
+- `test/status.test.js` now runs the **six recorded B1 Pro heartbeats and both recorded
+  RFID payloads as fixtures**, asserting each field against the physical state written
+  down beside it, that the ribbon fields cannot return, that no error field is invented
+  from `idx1`, and that the hardware claim does not leak to model 4096.
+
+### Deprecated
+- `Niimbot.FORCE_PACING` is now an **alias over `WRITE_MODE`** and keeps working — it is
+  published API as of 1.4.0 and is **not** removed. Reading it is `WRITE_MODE ===
+  "paced"`; `= true` sets `"paced"`; `= false` clears the override to `null`. One sharp
+  edge, documented in the source and in the README: `= false` also clears a `"fast"` or
+  `"acked"` override, because a boolean cannot express "not paced, but keep that". Prefer
+  `WRITE_MODE`.
+
+### Changed
+- The comment above `IS_MAC` (`src/niimbot.js`) claimed an iPhone "reports `iPhone` and
+  is NOT matched". That is **false** — it matches via the user agent's `"like Mac OS X"`
+  — and the comment was the stated reason `FORCE_PACING` existed. Replaced with what is
+  true: iOS is paced by default, and whether it needs to be is unmeasured.
+- `idx1` of the Advanced2 heartbeat is **not decoded**. Reading its low nibble as an
+  error code (`0` none / `8` lid open / `3` out of paper) fit four captures and was
+  refuted by a fifth taken right after a clean print. `docs/protocol-v4.md` records the
+  refuted hypothesis on purpose, so it is not re-derived.
+- `docs/protocol-v4.md` § *Consumable status* replaces the inferred offset tables with
+  the capture tables they were checked against, keeps the observed and still-inferred
+  parts visibly separate, and cites the NIIMBOT Community Wiki for the inverted-lid
+  hazard and the tag's print-limit counter.
 
 ## [1.4.0] - 2026-08-11
 ### Added
@@ -34,9 +148,10 @@ All notable changes to this project are documented here. The format is based on
 - `Niimbot.FORCE_PACING` (default `false`) — forces the paced write path on a model or
   platform the driver detected as `"fast"`. It is read **per write**, so it can be
   flipped on an already-open connection, and the detected `writeMode` is left intact
-  for logging. The escape hatch for a platform `IS_MAC` doesn't cover: an iPhone is
-  CoreBluetooth too but reports `navigator.platform === "iPhone"`, and until now
-  forcing pacing there meant editing the driver.
+  for logging.
+  ⚠ The stated rationale — that it covers an iPhone, which `IS_MAC` supposedly misses —
+  **was wrong**: `IS_MAC` is `true` on iOS. See the correction under *Unreleased*. The
+  feature works as described; only its justification was false.
 - The connect log line now reports `forcePacing=<bool>` next to `writeMode=` and `mac=`.
 - Demo: an on-screen **log panel** (collapsible, monospace, wraps instead of widening the
   page) that mirrors `console.log`/`console.error` — including the driver's `writeMode=`
@@ -52,13 +167,12 @@ All notable changes to this project are documented here. The format is based on
   polyfilling browser such as Bluefy, since Safari has no Web Bluetooth), and an
   *iOS coverage* section recording exactly what was tested.
 - **iPhone validated on the B1 Pro via Bluefy (2026-08-11): single label and the
-  5-dense-label stress run both print**, the dense run with a short inter-label pause
-  (BLE throughput, not a fault). This was the open question, and the result is the
-  opposite of the expected one: the macOS blank-print burst drop **did not** occur on
-  iOS in `"fast"` mode, so that failure is specific to **macOS**, not to CoreBluetooth
-  in general — `IS_MAC` correctly stays `false` on iPhone. `FORCE_PACING` therefore
-  ships as the diagnostic for this class of failure, not as a setting iOS requires.
-  Still untested on iOS: B1 and M2-H (the frame-bundling models).
+  5-dense-label stress run both print.** Still untested on iOS: B1 and M2-H (the
+  frame-bundling models).
+  ⚠ This entry originally went on to claim that iOS printed in `"fast"` mode and that
+  the macOS burst-drop is therefore macOS-specific. **That was wrong** — see the
+  correction under *Unreleased*. The false sentences are deleted rather than patched;
+  what remains above is what was actually observed.
 - Corrected two false claims in the `src/niimbot.js` header comment: the driver does
   `fetch` the image URL and rasterize it on an offscreen `<canvas>` (it owns no UI and
   reads no config, which is what was meant), and Web Bluetooth on Safari/iOS is now a

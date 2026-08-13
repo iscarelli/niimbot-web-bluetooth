@@ -56,6 +56,11 @@
   }
   function logRx(cmd, data) { if (DEBUG) { flushImg(); console.log(`[niimbot] ←  ${h2(cmd)} (${data.length}b) ${hex(data)}`); } }
   function logMsg(m) { if (DEBUG) { flushImg(); console.log(`[niimbot] ·  ${m}`); } }
+  // NOT gated behind DEBUG: which write path a print actually took must be readable
+  // without turning on the packet dump that buries it (a phone has no console — the
+  // demo's log panel mirrors console.log, and DEBUG off is its default). Reserved for
+  // the few lines that answer "how did this print go out?".
+  function logAlways(m) { flushImg(); console.log(`[niimbot] ·  ${m}`); }
 
   // Timing trace for batch diagnostics (concise: a few lines per batch), gated behind
   // DEBUG. Reveals whether an inter-label gap is us sending the next page late or the
@@ -103,33 +108,75 @@
   // comes out BLANK yet reports 100% (CoreBluetooth silently drops the burst that
   // Windows tolerates). "acked" = write-with-response (ordered, slow); "paced" = unacked
   // + a short gap; "fast" = unacked, no gap. The B1 Pro / M2-H take "fast" on Windows,
-  // but on macOS every model is paced (see IS_MAC below) so rows aren't dropped.
+  // but where IS_MAC holds every model is paced so rows aren't dropped.
+  // IS_MAC matches iOS TOO, and that is not a bug in the test: every iOS user agent
+  // contains "like Mac OS X", and iOS is CoreBluetooth as well. The consequence is that
+  // an iPhone has only ever printed PACED — whether it needs to is unmeasured. See the
+  // write-mode override below, which is what makes that measurable.
   const IS_MAC = (() => {
     try { if (navigator.userAgentData && navigator.userAgentData.platform) return navigator.userAgentData.platform === "macOS"; } catch (e) {}
     return /Mac/i.test((navigator.platform || "") + " " + (navigator.userAgent || ""));
   })();
-  let writeMode = "fast";   // "fast" | "acked" | "paced" — as DETECTED at connect; never overwritten by FORCE_PACING
+  let writeMode = "fast";   // "fast" | "acked" | "paced" — as DETECTED at connect; the override below never overwrites it
   let PACE_MS = 10;         // gap (ms) between unacked writes so rows aren't dropped; runtime-tunable via Niimbot.PACE_MS
-  // Escape hatch for a platform this driver doesn't recognize (IS_MAC covers macOS;
-  // an iPhone reports "iPhone" and is NOT matched, yet it is CoreBluetooth too). Set
-  // Niimbot.FORCE_PACING = true and a detected "fast" behaves as "paced". Read per
-  // write, not per connect, so it can be flipped on an already-open connection.
-  let FORCE_PACING = false;
+
+  // ── Write-mode override: an escape hatch in BOTH directions ─────────────────
+  // Niimbot.WRITE_MODE forces "fast" | "paced" | "acked" over whatever connect()
+  // detected; null (the default) means auto. Read per WRITE, not per connect, so it can
+  // be flipped on an already-open connection, and `writeMode` above keeps reporting what
+  // was DETECTED — the two are separate on purpose, so a log line can show both.
+  //
+  // Why it must force "fast" and not only "paced": IS_MAC matches iOS as well as macOS.
+  // Every iOS user agent contains "like Mac OS X", so an iPhone matches — measured, not
+  // assumed: the device's connect line reads `mac=true`. **iOS has therefore only ever
+  // printed paced.** Whether it NEEDS the pacing is unmeasured, and the only way to find
+  // out is to force "fast" there and look at the paper (README § iOS coverage has the
+  // procedure). A one-directional FORCE_PACING could not ask that question.
+  //
+  // Sharp edge, deliberate: FORCE_PACING (published API in 1.4.0) is kept as an ALIAS —
+  // reading it is `override === "paced"`, setting true sets "paced", setting false
+  // clears the override to null. So `FORCE_PACING = false` also clears a "fast" or
+  // "acked" override, because a boolean cannot express "not paced, but keep the other
+  // thing". Use WRITE_MODE when that distinction matters.
+  const WRITE_MODES = ["fast", "paced", "acked"];
+  let writeOverride = null;
+  function setWriteOverride(v) {
+    const next = (v == null || v === "auto") ? null : v;
+    if (next !== null && WRITE_MODES.indexOf(next) < 0) {
+      throw new Error(`Niimbot.WRITE_MODE must be null (auto) or one of ${WRITE_MODES.map((m) => `"${m}"`).join(", ")} — got ${JSON.stringify(v)}.`);
+    }
+    writeOverride = next;
+    logAlways(`WRITE_MODE override = ${next || "auto"} → effective=${effectiveWriteMode()} (detected=${writeMode})`);
+    warnOverrideVsModel();
+  }
   function effectiveWriteMode() {
-    return (FORCE_PACING && writeMode === "fast") ? "paced" : writeMode;
+    return writeOverride || writeMode;
+  }
+  // The 203 dpi B1 drops rows on an unpaced burst (MODEL_IDS `paced`), so forcing
+  // "fast" there is a diagnostic, not a setting. Say so loudly — and still obey it:
+  // refusing would put this driver in the business of overruling the measurement it
+  // exists to make possible.
+  function warnOverrideVsModel() {
+    const meta = (printerInfo && printerInfo.modelId != null) ? MODEL_IDS[printerInfo.modelId] : null;
+    if (writeOverride === "fast" && meta && meta.paced) {
+      logAlways(`⚠ WRITE_MODE="fast" overrides ${meta.label}, which NEEDS pacing (${meta.dpi} dpi: it drops rows on an unpaced burst). Obeying — expect blank or short labels. This is a diagnostic, not a setting.`);
+    }
   }
   async function writeRaw(bytes) {
     const mode = effectiveWriteMode();
     if (mode === "acked") { await characteristic.writeValueWithResponse(bytes); return; }
     // writeValueWithoutResponse pode estourar o buffer BLE em rajada — retry curto.
+    let last = null;
     for (let tries = 0; tries < 30; tries++) {
       try {
         await characteristic.writeValueWithoutResponse(bytes);
         if (mode === "paced") await sleep(PACE_MS);
         return;
-      } catch (e) { await sleep(4); }
+      } catch (e) { last = e; await sleep(4); }
     }
-    throw new Error("Failed to write to BLE (buffer full?)");
+    // Name the mode: with an override in play, "unacked writes keep failing" may mean
+    // the characteristic has no unacked path at all and "acked" is the only one it takes.
+    throw new Error(`Failed to write to BLE in "${mode}" mode (buffer full, or this characteristic has no unacked write path)${last && last.message ? ": " + last.message : ""}`);
   }
 
   function send(cmd, data) { logTx(cmd, data); return writeRaw(pack(cmd, data)); }
@@ -288,8 +335,12 @@
     const needsPacing = meta ? !!meta.paced : (task === "b1");
     writeMode = needsPacing ? (props.writeWithoutResponse ? "paced" : "acked") : "fast";
     _bundleAllowed = !!(meta && meta.bundle);   // only bundle frames where validated (B1, M2-H)
-    if (IS_MAC && writeMode === "fast") writeMode = "paced";   // macOS drops unacked bursts → pace the "fast" models too
-    logMsg(`writeMode=${writeMode} forcePacing=${FORCE_PACING} bundle=${_bundleAllowed} mac=${IS_MAC} pace=${PACE_MS} (task=${task || "?"}, model=${(meta && meta.label) || "?"}, write=${!!props.write}, writeNoResp=${!!props.writeWithoutResponse})`);
+    if (IS_MAC && writeMode === "fast") writeMode = "paced";   // macOS (and iOS — see IS_MAC) drops unacked bursts → pace the "fast" models too
+    // NOT DEBUG-gated: `effective=` is the answer to "which write path did this print
+    // take?", and the previous wrong conclusion about iOS was reached precisely because
+    // nobody could see it. One line per connect.
+    logAlways(`writeMode=${writeMode} override=${writeOverride || "auto"} effective=${effectiveWriteMode()} forcePacing=${writeOverride === "paced"} bundle=${_bundleAllowed} mac=${IS_MAC} pace=${PACE_MS} (task=${task || "?"}, model=${(meta && meta.label) || "?"}, write=${!!props.write}, writeNoResp=${!!props.writeWithoutResponse})`);
+    warnOverrideVsModel();   // now that the model is identified, an override that fights it is worth saying
     if (task === "b1") await b1Handshake();
   }
 
@@ -318,35 +369,77 @@
   // ── Consumable status: EXPOSED, never enforced ──────────────────────────────
   // Heartbeat (0xDC[04] → 0xD9) and RfidInfo (0x1A[01] → 0x1B) say whether the lid is
   // shut, paper is loaded and what the RFID consumable claims. NOTHING in this driver
-  // reads these fields: no print path calls getStatus() or branches on it. The offsets
-  // below come from niimbluelib and are UNCONFIRMED on hardware here (see
-  // docs/protocol-v4.md § Consumable status), and a wrongly decoded `paperInserted`
-  // that refused a job into a perfectly loaded printer is worse than no status at all.
-  // So `decoded` is advisory and `raw` is the contract: the exact response bytes, which
-  // is the only part that cannot be wrong, and what lets the layout be settled later.
-  // Not for use mid-print: it shares the single `pending` slot with the print path.
+  // reads these fields: no print path calls getStatus() or branches on it, and that is
+  // still true now that some of them are hardware-confirmed. Six captures on ONE model
+  // is not a licence to refuse a job into a printer that is actually loaded, so
+  // `readiness()` below REPORTS and is wired to nothing.
+  //
+  // TRUST IS PER FIELD, not per response — `decoded.evidence` marks every decoded field
+  // (see docs/protocol-v4.md § Consumable status for the capture table it comes from):
+  //   "observed"     the byte moved on real hardware here exactly as the field name
+  //                  says, each change isolated against a control. B1 Pro (model id
+  //                  4097), response 0xD9, 13-byte payload, captures of 2026-08-11.
+  //   "varies"       the byte was seen to move with the right physical event, but WHAT
+  //                  it measures (or in what unit) is not settled. Better than a
+  //                  transcription, short of confirmed.
+  //   "inferred"     not confirmed here. Covers both niimbluelib's transcribed names and
+  //                  a reading the captures support but do not prove (`printLimit`).
+  // `raw` remains the contract: the exact response bytes, the only part that cannot be
+  // wrong. Not for use mid-print: it shares the single `pending` slot with the print path.
+  //
+  // DELIBERATELY NOT DECODED, and each for a reason found in those captures:
+  //   idx1  1.4.0 did not decode it; a later reading of its low nibble as an error code
+  //         (0 none / 8 lid open / 3 out of paper) fit the first four captures and was
+  //         REFUTED by c6 — 0x4a, low nibble `a`, taken right after a clean 3-label print
+  //         with nothing wrong. Across the six it reads 88, 80, 83, 80, 80, 74: an analog
+  //         quantity that sagged under load, not an enum. Unexplained; do not name it.
+  //   idx7  `ribbonRfidSuccess` / `ribbonInserted` in 1.4.0. The B1 Pro is direct-thermal
+  //   idx8  and has no ribbon at all, yet 1.4.0 reported `ribbonInserted: true` in every
+  //         capture. A field that is confidently wrong is worse than an absent one.
+  // Their bytes stay in `raw`, so a later capture can still settle them.
+  const OBSERVED = "observed", VARIES = "varies", INFERRED = "inferred";
+
+  // The one configuration whose bytes have actually been seen here: a B1 Pro answering
+  // 0xD9 with a 13-byte payload. The B1 (4096) and M2-H (4608) have NEVER been captured
+  // and may not even use this layout, so they get no hardware claim. That restriction is
+  // not politeness: the NIIMBOT Community Wiki says of this very heartbeat that "for
+  // specific printer models, lid-closed logic is inverted (1 = closed)", and our captures
+  // show 1 = OPEN — so widening `lidClosed` to another model could invert its meaning.
+  const OBSERVED_MODEL_ID = 4097;
+  const observedHere = () => !!(printerInfo && printerInfo.modelId === OBSERVED_MODEL_ID);
 
   // niimbluelib abstraction.ts processHeartbeatAdvanced1: these model ids report the
   // lid byte inverted. None of MODEL_IDS is in it; kept so an unknown printer decodes
   // the same way niimbluelib would.
   const INVERTED_LID_MODELS = [512, 513, 514, 272, 273, 274, 1792, 2304, 2560, 3584, 3840, 4352, 5120];
 
-  // Decode a heartbeat response. The LAYOUT IS PICKED BY THE RESPONSE OPCODE, then by
-  // payload length — `0xD9` is In_HeartbeatAdvanced2 (what type 04 asks for), `0xDD` is
-  // In_HeartbeatAdvanced1. `0xDE`/`0xDF` (Basic/Unknown) carry no fields niimbluelib
-  // decodes, so they yield null rather than a guess. Booleans follow niimbluelib's
-  // polarity exactly: 0 = lid closed, 0 = paper inserted, non-0 = RFID read ok.
+  // Decode a heartbeat response into { hb, ev } — fields and their per-field evidence.
+  // The LAYOUT IS PICKED BY THE RESPONSE OPCODE, then by payload length: `0xD9` is
+  // In_HeartbeatAdvanced2 (what type 04 asks for), `0xDD` is In_HeartbeatAdvanced1.
+  // `0xDE`/`0xDF` (Basic/Unknown) carry no fields niimbluelib decodes, so they yield
+  // null rather than a guess. Polarity for 0xD9 is now the captures', not niimbluelib's,
+  // and they agree: idx4 1 = lid open, idx5 1 = no paper, idx6 1 = tag read ok.
   function decodeHeartbeat(cmd, d) {
     const n = d.length;
     let hb = null;
+    const ev = {};
     if (cmd === 0xd9) {                       // Advanced2 — needs ≥ 9 bytes
       if (n < 9) return null;
       hb = {
         layout: `advanced2/${n}`,
         chargeLevel: d[2], temp: d[3],
         lidClosed: d[4] === 0, paperInserted: d[5] === 0, paperRfidSuccess: d[6] !== 0,
-        ribbonRfidSuccess: d[7] !== 0, ribbonInserted: d[8] === 0,
       };
+      // Only the captured configuration carries a hardware claim; anything else falls
+      // back to "inferred", which here means "extrapolated and never checked".
+      const seen = observedHere() && n === 13;
+      ev.lidClosed = ev.paperInserted = ev.paperRfidSuccess = seen ? OBSERVED : INFERRED;
+      // idx3 rose 0x48 idle → 0x49 before a job → 0x4a right after 3 labels, so it does
+      // track something thermal. The UNIT is not settled: 72–74 is high for °C on a
+      // lightly-used printhead. Hence "varies", not "observed".
+      ev.temp = seen ? VARIES : INFERRED;
+      // idx2 read 0x50 in all six captures — constant is not confirmed, only unrefuted.
+      ev.chargeLevel = INFERRED;
       // Trailing wifiRssi / lightingErrorCode / voltageState are deliberately NOT
       // decoded: optional in niimbluelib and unverifiable here. They stay in `raw`.
     } else if (cmd === 0xdd) {                // Advanced1 — layout keyed off length
@@ -355,23 +448,42 @@
       else if (n === 19) hb = { layout: "advanced1/19", lidClosed: d[15] === 0, chargeLevel: d[16], paperInserted: d[17] === 0, paperRfidSuccess: d[18] !== 0 };
       else if (n === 20) hb = { layout: "advanced1/20", paperInserted: d[18] === 0, paperRfidSuccess: d[19] !== 0 };
       else return null;                       // unknown length → no half-filled object
+      // Advanced1 has never been captured here at all: purely niimbluelib's.
+      for (const k in hb) if (k !== "layout") ev[k] = INFERRED;
     } else {
       return null;
     }
     if (hb.lidClosed != null && printerInfo && INVERTED_LID_MODELS.indexOf(printerInfo.modelId) >= 0) {
       hb.lidClosed = !hb.lidClosed;
     }
-    return hb;
+    return { hb, ev };
   }
 
-  // Decode an RfidInfo (0x1B) payload, per niimbluelib processRfidInfo:
+  // Decode an RfidInfo (0x1B) payload into { rfid, ev }, per niimbluelib processRfidInfo:
   //   1 byte                → no tag present
-  //   uuid[8] · barCode(u8 len + bytes) · serial(u8 len + bytes) · allPaper(i16 BE)
-  //   · usedPaper(i16 BE) · consumablesType(u8) · [capacity(i16 BE)]
+  //   uuid[8] · barCode(u8 len + bytes) · serial(u8 len + bytes) · printLimit(i16 BE,
+  //   niimbluelib's `allPaper`) · usedPaper(i16 BE) · consumablesType(u8) · [capacity(i16 BE)]
   // niimbluelib's reader throws on an overrun AND on leftover bytes; both mean the
   // payload isn't this layout, so both return null here instead of a partial guess.
+  // Two real 41-byte B1 Pro payloads (two different rolls) consume exactly, which
+  // corroborates the STRUCTURE; the field meanings are separate, and marked one by one:
+  //   usedPaper  went 6 → 9 across a 3-label job. Confirmed counter, and independently
+  //              backed by the "printed label cnt" block in the NIIMBOT Community Wiki's
+  //              RFID tag map.
+  //   capacity   read 230, which the printer's owner confirmed is the roll's label count
+  //              when new. Confirmed.
+  //   printLimit niimbluelib calls this `allPaper`; it is NOT a paper total. It read 276
+  //              against a 230-label roll and did not move across a print job, and on a
+  //              second roll it read 120 against a capacity of 100 — the same 1.2 ratio,
+  //              exactly. The wiki's tag map lists a "print limited cnt", so the reading
+  //              is the consumable's DRM cap, provisioned at 120 % of nominal. Two rolls,
+  //              one model, one label type: a well-supported inference, not a validated
+  //              field. See docs/protocol-v4.md § Consumable status.
+  // Never observed to VARY, so never promoted however sane they look: `consumablesType`
+  // read 1 ("with gaps") on both rolls, and uuid/barCode/serialNumber differ per roll
+  // without anything here confirming which is which.
   function decodeRfid(d) {
-    if (d.length === 1) return { tagPresent: false };
+    if (d.length === 1) return { rfid: { tagPresent: false }, ev: { tagPresent: INFERRED } };
     let o = 0;
     const left = () => d.length - o;
     const i8 = () => d[o++];
@@ -384,20 +496,36 @@
     const barCode = str(i8());
     if (left() < 1 || left() < 1 + d[o]) return null;
     const serialNumber = str(i8());
-    if (left() < 5) return null;                            // allPaper + usedPaper + type
-    const info = { tagPresent: true, uuid, barCode, serialNumber, allPaper: i16(), usedPaper: i16(), consumablesType: i8() };
+    if (left() < 5) return null;                            // printLimit + usedPaper + type
+    const info = { tagPresent: true, uuid, barCode, serialNumber, printLimit: i16(), usedPaper: i16(), consumablesType: i8() };
     if (left() === 2) info.capacity = i16();
     if (left() !== 0) return null;                          // extra data → not this layout
-    return info;
+    // Unlike the heartbeat, this layout is self-describing (length-prefixed strings), so
+    // a field keeps its meaning at any payload size — the model is the only scope needed.
+    const seen = observedHere();
+    const ev = {
+      tagPresent: INFERRED, uuid: INFERRED, barCode: INFERRED, serialNumber: INFERRED,
+      consumablesType: INFERRED, printLimit: INFERRED,
+      usedPaper: seen ? OBSERVED : INFERRED,
+    };
+    if (info.capacity != null) ev.capacity = seen ? OBSERVED : INFERRED;
+    return { rfid: info, ev };
   }
 
   // Ask the printer for its consumable status. Advisory only — see the block above.
   // Returns { raw: { heartbeat, heartbeatCmd, rfid }, decoded, confidence }:
   //   raw.heartbeat / raw.rfid  exact response payload bytes (Uint8Array) or null
   //   raw.heartbeatCmd          the response opcode, since it selects the layout
-  //   decoded                   { heartbeat, rfid } (each independently null when the
-  //                             layout isn't recognised), or null when neither decoded
-  //   confidence                "inferred" (from niimbluelib, unverified) | "unknown"
+  //   decoded                   { heartbeat, rfid, evidence } — `heartbeat` and `rfid`
+  //                             each independently null when that layout isn't
+  //                             recognised, `evidence` the per-field trust map
+  //                             ({ heartbeat, rfid }, matching keys); null when neither
+  //                             part decoded
+  //   confidence                a floor over `decoded.evidence`, kept for callers written
+  //                             against 1.4.0: "validated" when at least one decoded
+  //                             field is "observed" | "inferred" when something decoded
+  //                             but nothing is confirmed | "unknown" when nothing did.
+  //                             It is deliberately coarse — read `evidence` per field.
   // A missing 0x1B is NORMAL — many models/consumables never answer — so it times out
   // quietly and reports rfid: null rather than throwing.
   async function getStatus(opts) {
@@ -413,9 +541,16 @@
     // layout in decodeHeartbeat.
     const hb = await sendWait(0xdc, [0x04], null, hbTimeout);      // Heartbeat, type 04
     const rf = await sendWait(0x1a, [0x01], 0x1b, rfidTimeout);    // RfidInfo (optional)
-    const heartbeat = hb ? decodeHeartbeat(hb.cmd, hb.data) : null;
-    const rfid = rf ? decodeRfid(rf.data) : null;
-    const decoded = (heartbeat || rfid) ? { heartbeat, rfid } : null;
+    const hbDec = hb ? decodeHeartbeat(hb.cmd, hb.data) : null;
+    const rfDec = rf ? decodeRfid(rf.data) : null;
+    let decoded = null;
+    if (hbDec || rfDec) {
+      decoded = {
+        heartbeat: hbDec ? hbDec.hb : null,
+        rfid: rfDec ? rfDec.rfid : null,
+        evidence: { heartbeat: hbDec ? hbDec.ev : null, rfid: rfDec ? rfDec.ev : null },
+      };
+    }
     return {
       raw: {
         heartbeat: hb ? Uint8Array.from(hb.data) : null,
@@ -423,8 +558,42 @@
         rfid: rf ? Uint8Array.from(rf.data) : null,
       },
       decoded,
-      confidence: decoded ? "inferred" : "unknown",
+      confidence: decoded ? (hasObserved(decoded.evidence) ? "validated" : "inferred") : "unknown",
     };
+  }
+
+  function hasObserved(evidence) {
+    for (const part in evidence) {
+      const m = evidence[part];
+      for (const k in m) if (m[k] === OBSERVED) return true;
+    }
+    return false;
+  }
+
+  // REPORT — never enforce — whether a status looks print-ready. Pure: it takes what
+  // getStatus() returned and calls nothing, so it can never delay or alter a print. It
+  // exists so a future gate is easy to write in the APP, and is deliberately not wired
+  // into printImage/printBatch: lid and paper are confirmed on one model from six
+  // captures, which is not enough to refuse a job here.
+  //   { ready: true | false | null, reasons: [strings], evidence: <weakest marker used> }
+  // `ready` is null when nothing decoded bears on readiness — "cannot tell" and "not
+  // ready" must not collapse into the same answer.
+  function readiness(status) {
+    const dec = status && status.decoded;
+    const hb = dec && dec.heartbeat;
+    const ev = (dec && dec.evidence && dec.evidence.heartbeat) || {};
+    const reasons = [];
+    const used = [];
+    if (hb && hb.lidClosed != null) { used.push(ev.lidClosed); if (!hb.lidClosed) reasons.push("lid open"); }
+    if (hb && hb.paperInserted != null) { used.push(ev.paperInserted); if (!hb.paperInserted) reasons.push("no paper"); }
+    if (!used.length) return { ready: null, reasons: ["nothing decoded that bears on readiness"], evidence: null };
+    const rank = [INFERRED, VARIES, OBSERVED];
+    let weakest = OBSERVED;
+    for (const m of used) {
+      const mm = rank.indexOf(m) < 0 ? INFERRED : m;   // an unmarked field is not a claim
+      if (rank.indexOf(mm) < rank.indexOf(weakest)) weakest = mm;
+    }
+    return { ready: reasons.length === 0, reasons, evidence: weakest };
   }
 
   // ── Bitmap: image → rows packed MSB-first (1 = black) ───────────────────────
@@ -642,18 +811,32 @@
     get DEBUG() { return DEBUG; }, set DEBUG(v) { DEBUG = !!v; },
     get BUNDLE_MAX() { return BUNDLE_MAX; }, set BUNDLE_MAX(v) { BUNDLE_MAX = Math.max(0, v | 0); },
     get PACE_MS() { return PACE_MS; }, set PACE_MS(v) { PACE_MS = Math.max(0, v | 0); },
-    // Force the paced write path even where the driver detected "fast" (applies at
-    // write time, so it can be flipped mid-connection). "acked"/"paced" are unaffected.
-    get FORCE_PACING() { return FORCE_PACING; }, set FORCE_PACING(v) { FORCE_PACING = !!v; },
+    // Override the DETECTED write path: null (auto) | "fast" | "paced" | "acked".
+    // Applied at write time, so it can be flipped mid-connection; anything else throws
+    // rather than being ignored. See the "Write-mode override" block above.
+    get WRITE_MODE() { return writeOverride; }, set WRITE_MODE(v) { setWriteOverride(v); },
+    // What the driver DETECTED at connect, and what writes are actually using — the
+    // pair a tester needs to tell "the override took effect" from "it was already that".
+    get DETECTED_WRITE_MODE() { return writeMode; },
+    get EFFECTIVE_WRITE_MODE() { return effectiveWriteMode(); },
+    // DEPRECATED alias over WRITE_MODE, kept because it is published API as of 1.4.0:
+    // true ⇔ override "paced"; `= false` clears the override entirely (including a
+    // "fast" or "acked" one — a boolean cannot say "not paced, but keep that").
+    get FORCE_PACING() { return writeOverride === "paced"; },
+    set FORCE_PACING(v) { setWriteOverride(v ? "paced" : null); },
     get printer() { return printerInfo; },   // { modelId, protocolVersion, label, task, dpi } after connect
     isSupported: () => !!navigator.bluetooth,
     // Connect and identify the printer (model id + protocol) without printing — the
     // app can read the returned info to auto-select the right model/size.
     identify: async (model) => { await connect(model); return printerInfo; },
-    // Consumable status (lid/paper/RFID). ADVISORY: decoded from niimbluelib's layouts
-    // and unconfirmed on hardware here, so the driver itself never reads it — see the
+    // Consumable status (lid/paper/RFID). ADVISORY: the driver itself never reads it.
+    // Trust is PER FIELD — `decoded.evidence` says which fields were confirmed on real
+    // hardware (B1 Pro only) and which are still niimbluelib's transcription. See the
     // "Consumable status" block above. `raw` carries the exact response bytes.
     getStatus,
+    // Pure reporter over a getStatus() result — { ready, reasons, evidence }. NOT wired
+    // into any print path, by design; call it yourself if your app wants to warn.
+    readiness,
     connect, disconnect, printImage, printBatch,
   };
 })(typeof window !== "undefined" ? window : globalThis);
