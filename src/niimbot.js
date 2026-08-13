@@ -543,8 +543,19 @@
   // A missing 0x1B is NORMAL — many models/consumables never answer — so it times out
   // quietly and reports rfid: null rather than throwing.
   async function getStatus(opts) {
-    if (!characteristic || !device || !(device.gatt && device.gatt.connected)) {
-      throw new Error("Not connected — call Niimbot.connect(model) or Niimbot.identify(model) first (getStatus does not connect on its own).");
+    // Name WHICH condition failed. The three have different causes and the old single
+    // message hid that: `device` null means disconnect() was called, `characteristic`
+    // null means the gattserverdisconnected event fired (the browser saw a drop), and
+    // gatt.connected false means the link is down WITHOUT that event having run. A
+    // session that ends unexpectedly is diagnosable only if these are told apart.
+    if (!device) {
+      throw new Error("Not connected — no device (disconnect() was called, or connect() never ran). Call Niimbot.connect(model) or Niimbot.identify(model) first.");
+    }
+    if (!characteristic) {
+      throw new Error("Not connected — the link dropped (gattserverdisconnected fired and cleared the characteristic). Reconnect with Niimbot.connect(model).");
+    }
+    if (!(device.gatt && device.gatt.connected)) {
+      throw new Error("Not connected — device.gatt.connected is false while the characteristic is still held, so the link went down without the disconnect event running. Reconnect with Niimbot.connect(model).");
     }
     const o = opts || {};
     const hbTimeout = o.timeoutMs != null ? o.timeoutMs : 1000;
