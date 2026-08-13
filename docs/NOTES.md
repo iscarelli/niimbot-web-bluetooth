@@ -10,28 +10,43 @@ Read from a B1 Pro on 2026-08-13, four rolls, via the demo's *Read status*:
 | `barCode` | `serialNumber` | label | `capacity` | note |
 |---|---|---|---|---|
 | `11262111` | `PC0G229321004571` | 50 × 30 mm | 230 | 8 digits — **not** an EAN-13 |
-| `6975746632324` | `PC0G428336001192` | 30×45+50 cable flag, **white** | 80 | EAN-13 ✔ |
-| `6975746632331` | `PC0G513326003085` | 30×45+50 cable flag, colour not recorded | 80 | EAN-13 ✔ |
-| `6975746632348` | `PC0G403350000212` | 30×45+50 cable flag, **red** | 80 | EAN-13 ✔ |
+| `10262260` | `PZ1G328306001390` | 50 × 30 mm, white | 230 | 8 digits — **not** an EAN-13 |
+| `6975746632324` | `PC0G428336001192` | 30×45+50 cable flag, **white** | 80 | EAN-13 ✔ product `63232` |
+| `6975746632331` | `PC0G513326003085` | 30×45+50 cable flag, **yellow** | 80 | EAN-13 ✔ product `63233` |
+| `6975746632348` | `PC0G403350000212` | 30×45+50 cable flag, **red** | 80 | EAN-13 ✔ product `63234` |
+| `6977031215465` | — | 25×38+40 cable flag, **blue** | — | EAN-13 ✔, prefix `6977031` (a different maker) |
 
-**`barCode` is the product code (GTIN), not a roll id.** The three 13-digit codes are
-valid EAN-13 (check digit verified), and stripping the check digit leaves
-`697574663232` / `…3233` / `…3234` — **consecutive**, on three rolls of identical
-geometry differing only in colour. That is how a manufacturer numbers SKU variants; a
-per-roll identifier would not come out consecutive on rolls bought separately.
+**There are two coding schemes on these tags, and they behave differently.** This matters
+because it decides whether registering one roll covers every future roll of the same
+product, or only that roll.
 
-`serialNumber` is what identifies the individual roll: it differs on every roll above and
-carries what look like batch/date codes.
+**13 digits — a GTIN, i.e. a product code.** All four are valid EAN-13 (check digit
+verified). The three cable flags share the maker prefix `6975746` and carry *consecutive*
+product numbers `63232` (white) / `63233` (yellow) / `63234` (red) — three rolls of
+identical geometry differing only in colour, which is exactly how a manufacturer numbers
+SKU variants. The 25×38 blue has a different prefix (`6977031`), a different maker, and
+is also a valid EAN-13. For these, a `barCode → { size, colour }` table generalises to
+the SKU and is shareable between users.
 
-Two limits on that conclusion, both worth respecting:
+**8 digits — not a product code.** The two 50 × 30 rolls, both 230 labels, carry
+*different* codes (`11262111`, `10262260`). If they are the same product, this scheme is
+per roll or per batch, and every new 50 × 30 roll needs registering again.
 
-- It is inference **from the format of the code**, not an observation. The direct
-  confirmation — two physically different rolls of the SAME SKU showing the same
-  `barCode` with different `serialNumber` — has **not** happened yet. An attempt on
-  2026-08-13 produced two identical records (same `serialNumber`, same `usedPaper`),
-  i.e. the same roll read twice, which confirms nothing.
-- `11262111` is 8 digits and is not an EAN-13, so nothing here explains that scheme.
-  Do not extend the conclusion to it.
+`serialNumber` identifies the individual roll in both schemes: it differs on every roll
+above and carries what look like batch/date codes.
+
+Three limits, all worth respecting:
+
+- The GTIN reading is inference **from the format of the code**, not an observation. The
+  direct confirmation — two physically different rolls of the SAME SKU showing the same
+  `barCode` with different `serialNumber` — has not happened. An attempt on 2026-08-13
+  produced two identical records (same `serialNumber`, same `usedPaper`): the same roll
+  read twice, which confirms nothing.
+- Whether the two 8-digit rolls are actually the same product is unestablished. Their
+  serials start `PC0G` and `PZ1G` — different prefixes, so they may be two similar
+  products from different makers rather than one product twice.
+- **Scope: one printer (a B1 Pro) and the six rolls above, on 2026-08-13.** Nothing here
+  has been checked against another printer model or another label range.
 
 **Why it matters:** keying the demo's label memory by `barCode` is correct, and a
 `barCode → { size, colour }` table is in principle **shareable between users** rather
