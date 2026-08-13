@@ -41,6 +41,33 @@
        shrink rather than push the page wider than a ~380 px phone screen. */
     button { max-width: 100%; white-space: normal; }
     label input[type="text"], #text { max-width: 100%; }
+
+    /* Roll registration. Collapsed by default: this is occasional work, and open it
+       would push the print buttons off a phone screen. Everything here is sized for a
+       thumb — ≥44 px targets and 16 px type, below which iOS WebKit zooms on focus. */
+    #rollbox { margin-top: 1.2rem; border: 1px solid #ccc; border-radius: 4px; padding: .5rem .6rem; }
+    #rollbox summary { cursor: pointer; font-weight: 600; }
+    #rollbox summary span { font-weight: 400; color: #666; }
+    .rollctl { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem .6rem; margin: .6rem 0; }
+    .rollctl button { min-height: 44px; font-size: .95rem; padding: .5rem .8rem; }
+    .rollform { display: flex; flex-wrap: wrap; gap: .3rem .8rem; }
+    .rollform label { display: flex; flex-direction: column; font-size: .8rem; color: #444; margin: .2rem 0; }
+    .rollform input { min-height: 44px; font-size: 1rem; padding: .3rem .5rem; box-sizing: border-box; }
+    .rollform input[type="number"] { width: 7rem; }
+    .muted { color: #666; font-size: .82rem; font-family: ui-monospace, Menlo, Consolas, monospace;
+             overflow-wrap: anywhere; }
+    #rollcalc { margin: .3rem 0 .2rem; }
+    #rollcalc .clamp { color: #b06000; }
+    #rolllist { margin-top: .6rem; }
+    .rollrow { display: flex; align-items: center; justify-content: space-between; gap: .5rem;
+               border-top: 1px solid #eee; padding: .45rem 0; font-size: .85rem; }
+    .rollrow code { font-family: ui-monospace, Menlo, Consolas, monospace; overflow-wrap: anywhere; }
+    .rollrow button { min-height: 36px; padding: .25rem .6rem; font-size: .8rem; flex: none; }
+    /* The JSON escape hatch: shown only when the clipboard refuses, or on Import. A
+       copy button that silently copies nothing is worse than none — you paste stale
+       clipboard content believing it is your data. */
+    #rolljson { display: none; width: 100%; box-sizing: border-box; min-height: 8rem; margin-top: .5rem;
+                font-family: ui-monospace, Menlo, Consolas, monospace; font-size: .78rem; }
   </style>
 </head>
 <body>
@@ -64,6 +91,31 @@
   <button id="print5dense">Print 5 dense labels (stress)</button>
   <div id="status"></div>
   <canvas id="preview"></canvas>
+
+  <details id="rollbox">
+    <summary>Rolls <span id="rollcount">(0 saved)</span></summary>
+    <p class="muted">Fit a roll, read its tag, type the label's real size in mm, save.
+       The size is remembered against the tag's barcode and restored on the next
+       <em>Connect &amp; identify</em>.</p>
+    <div class="rollctl">
+      <button id="rollread" type="button">Read tag</button>
+      <span id="rolltag" class="muted">no tag read yet</span>
+    </div>
+    <div class="rollform">
+      <label>Name <input id="rollname" type="text" placeholder="cable flag"></label>
+      <label>Width mm <input id="rollw" type="number" step="0.1" min="1" inputmode="decimal"></label>
+      <label>Height mm <input id="rollh" type="number" step="0.1" min="1" inputmode="decimal"></label>
+      <label>Colour <input id="rollcolor" type="text" placeholder="white"></label>
+    </div>
+    <div id="rollcalc" class="muted"></div>
+    <div class="rollctl">
+      <button id="rollsave" type="button">Save roll</button>
+      <button id="rollcopy" type="button">Copy JSON</button>
+      <button id="rollpaste" type="button">Import JSON</button>
+    </div>
+    <div id="rolllist"></div>
+    <textarea id="rolljson" spellcheck="false"></textarea>
+  </details>
 
   <details id="logbox" open>
     <summary>Log <span id="logcount">(0 lines)</span></summary>
@@ -134,25 +186,32 @@
       // Reading a trace off a phone screen is the whole problem, so copying it has
       // to work. execCommand is the fallback for a non-secure context, where
       // navigator.clipboard is undefined.
-      document.getElementById("logcopy").addEventListener("click", async () => {
-        const btn = document.getElementById("logcopy");
-        const text = lines.join("\n");
-        let ok = false;
+      // Shared with the Rolls panel (window.demoCopyText) so there is ONE clipboard
+      // path to get right, not two. Returns whether it actually copied — callers must
+      // react to false, because a button that silently copies nothing is worse than no
+      // button: you paste stale clipboard content believing it is your data.
+      async function copyText(text) {
         try {
           if (navigator.clipboard && navigator.clipboard.writeText) {
             await navigator.clipboard.writeText(text);
-            ok = true;
+            return true;
           }
-        } catch (e) { ok = false; }
-        if (!ok) {
-          const ta = document.createElement("textarea");
-          ta.value = text;
-          ta.style.cssText = "position:fixed;top:0;left:0;opacity:0";
-          document.body.appendChild(ta);
-          ta.select();
-          try { ok = document.execCommand("copy"); } catch (e) { ok = false; }
-          document.body.removeChild(ta);
-        }
+        } catch (e) { /* fall through to the legacy path */ }
+        const ta = document.createElement("textarea");
+        ta.value = text;
+        ta.style.cssText = "position:fixed;top:0;left:0;opacity:0";
+        document.body.appendChild(ta);
+        ta.select();
+        let ok = false;
+        try { ok = document.execCommand("copy"); } catch (e) { ok = false; }
+        document.body.removeChild(ta);
+        return ok;
+      }
+      window.demoCopyText = copyText;
+
+      document.getElementById("logcopy").addEventListener("click", async () => {
+        const btn = document.getElementById("logcopy");
+        const ok = await copyText(lines.join("\n"));
         btn.textContent = ok ? "Copied ✓" : "Copy failed";
         setTimeout(() => { btn.textContent = "Copy log"; }, 1500);
       });
@@ -162,7 +221,14 @@
   <script>
     // Cache-bust the driver during development so edits always load (the dev
     // server was returning 304s). Writes a <script> with a unique query string.
-    document.write('<script src="../src/niimbot.js?t=' + Date.now() + '"><\/script>');
+    // label-memory.js and label-size.js are OPTIONAL add-ons: they never reference
+    // Niimbot, so load order does not matter and an app can take one, both or neither.
+    (function () {
+      const t = Date.now();
+      for (const f of ["niimbot", "label-memory", "label-size"]) {
+        document.write('<script src="../src/' + f + '.js?t=' + t + '"><\/script>');
+      }
+    })();
   </script>
   <script>
   (async function () {
@@ -209,11 +275,38 @@
       $("print").disabled = true;
     }
 
+    // Storage keys. Declared here because populateSizes() below reads the custom sizes
+    // at load time, and a `const` used before its declaration throws (TDZ).
+    // The label-memory key is kept verbatim from the inline version this replaced, so
+    // rolls already learned on a device survive the change. Per-app on purpose: two
+    // apps on one origin share one localStorage, and this Pages site hosts more than
+    // one page — the module requires the key for exactly that reason.
+    const LABEL_MEMORY_KEY = "niimbot-demo:size-by-barcode";
+    const CUSTOM_SIZE_KEY = "niimbot-demo:custom-sizes";
+
     const reg = await fetch("../registry.json").then((r) => r.json());
     for (const [k, m] of Object.entries(reg.models)) {
       const o = new Option(m.label, k, k === reg.default_model, k === reg.default_model);
       $("model").add(o);
     }
+
+    // Sizes the user defined in the Rolls panel, kept beside the shipped registry
+    // rather than merged into it: `registry.json` is data that ships with the library,
+    // and promoting a size into it is a deliberate step, not a side effect of someone
+    // typing millimetres on their phone. Read through the same guarded pattern as the
+    // label memory — a storage failure must cost the custom sizes, never the print.
+    function customSizes() {
+      try {
+        const m = JSON.parse(localStorage.getItem(CUSTOM_SIZE_KEY) || "{}");
+        return m && typeof m === "object" && !Array.isArray(m) ? m : {};
+      } catch (e) { return {}; }
+    }
+    function saveCustomSizes(map) {
+      try { localStorage.setItem(CUSTOM_SIZE_KEY, JSON.stringify(map)); return true; }
+      catch (e) { console.error("[rolls] could not save sizes: " + ((e && e.message) || e)); return false; }
+    }
+    // Registry first, so a custom entry can never shadow a shipped one by accident.
+    const allSizes = () => Object.assign({}, reg.sizes, customSizes());
 
     // Sizes are calibrated per dpi, so only offer those matching the selected
     // model (a B1 50×30 has different pixels than a B1 Pro 50×30). Keep the
@@ -221,12 +314,16 @@
     function populateSizes() {
       const dpi = reg.models[$("model").value].dpi;
       const prev = $("size").value;
+      const custom = customSizes();
       $("size").innerHTML = "";
       let selected = null;
-      for (const [k, s] of Object.entries(reg.sizes)) {
+      for (const [k, s] of Object.entries(allSizes())) {
         if (s.dpi != null && dpi != null && s.dpi !== dpi) continue;
-        $("size").add(new Option(s.label, k));
+        $("size").add(new Option(custom[k] ? s.label + " ★" : s.label, k));
         if (k === prev || (selected === null && k === reg.default_size)) selected = k;
+      }
+      if (!$("size").options.length) {                 // no size at all for this dpi
+        $("size").add(new Option("— no size for this model —", ""));
       }
       $("size").value = selected || $("size").options[0].value;
     }
@@ -284,7 +381,7 @@
     }
 
     function refresh() {
-      const size = reg.sizes[$("size").value];
+      const size = allSizes()[$("size").value];
       drawTest(size, $("text").value);
     }
     $("size").addEventListener("change", refresh);
@@ -302,51 +399,15 @@
     // no config and owns no UI — it takes the model and the size from the caller
     // (src/niimbot.js:1-21). It already exposes everything needed for this, via
     // getStatus().decoded.rfid.barCode.
-    const LABEL_MEMORY_KEY = "niimbot-demo:size-by-barcode";
+    // The key is per-app on purpose and has no default in the module: two apps on one
+    // origin share one localStorage, and this Pages site hosts more than one page.
+    // Kept verbatim from the inline version this replaced, so rolls already learned on
+    // a device survive the change.
 
-    // localStorage throws for real, ordinary reasons (Safari private mode, cookies
-    // blocked, quota) — and this is a convenience layer over a driver whose print
-    // path must keep working. Every access is therefore contained: a failure costs
-    // the memory, never the print.
-    const labelMemory = {
-      all() {
-        try {
-          const map = JSON.parse(localStorage.getItem(LABEL_MEMORY_KEY) || "{}");
-          return map && typeof map === "object" ? map : {};
-        } catch (e) { return {}; }
-      },
-      recall(barCode) {
-        if (!barCode) return null;
-        const v = labelMemory.all()[barCode];
-        return typeof v === "string" ? v : null;
-      },
-      remember(barCode, sizeId) {
-        if (!barCode || !sizeId) return false;
-        try {
-          const map = labelMemory.all();
-          map[barCode] = sizeId;
-          localStorage.setItem(LABEL_MEMORY_KEY, JSON.stringify(map));
-          return true;
-        } catch (e) {
-          console.error("[label-memory] could not save: " + ((e && e.message) || e));
-          return false;
-        }
-      },
-      forget(barCode) {
-        try {
-          const map = labelMemory.all();
-          delete map[barCode];
-          localStorage.setItem(LABEL_MEMORY_KEY, JSON.stringify(map));
-          return true;
-        } catch (e) { return false; }
-      },
-      clear() {
-        try { localStorage.removeItem(LABEL_MEMORY_KEY); return true; } catch (e) { return false; }
-      },
-    };
-    // Exposed so the whole flow can be exercised from the console (or a phone's
-    // remote inspector) with no printer: labelMemory.remember("X","T50x30"),
-    // reload, labelMemory.recall("X").
+    // Storage lives in src/label-memory.js now — an optional file any app can load,
+    // instead of ~40 lines every caller retypes (and gets the try/catch wrong).
+    const labelMemory = NiimbotLabelMemory.create({ key: LABEL_MEMORY_KEY });
+
     window.labelMemory = labelMemory;
 
     // The `consumablesType` enum, which is the same one the driver sends in
@@ -389,26 +450,29 @@
           + `consumablesType is "inferred", so check the roll yourself.`);
       }
 
-      const remembered = labelMemory.recall(bc);
+      // recall() returns a RECORD ({ size, color, … }) or null — not a bare size id.
+      const rec = labelMemory.recall(bc);
+      const remembered = rec && rec.size;
+      const colour = rec && rec.color ? ` [${rec.color}]` : "";
       const cur = $("size").value;
       if (!remembered) {
-        console.log(`[label-memory] tag ${bc}: no size remembered — keeping "${cur}". It is learned from the next successful print.`);
+        console.log(`[label-memory] tag ${bc}: no size remembered — keeping "${cur}". It is learned from the next successful print, or from the Rolls panel.`);
         return bc;
       }
       if (!Array.prototype.some.call($("size").options, (o) => o.value === remembered)) {
-        console.log(`[label-memory] tag ${bc}: remembered size "${remembered}" is not offered for the selected model — keeping "${cur}".`);
+        console.log(`[label-memory] tag ${bc}: remembered size "${remembered}"${colour} is not offered for the selected model — keeping "${cur}".`);
         return bc;
       }
       if (!autoSelect) {
-        console.log(`[label-memory] tag ${bc}: remembered size is "${remembered}" (currently selected: "${cur}").`);
+        console.log(`[label-memory] tag ${bc}: remembered size is "${remembered}"${colour} (currently selected: "${cur}").`);
         return bc;
       }
       if (cur !== remembered) {
         $("size").value = remembered;
         refresh();
       }
-      const s = reg.sizes[remembered];
-      console.log(`[label-memory] tag ${bc}: selected "${remembered}"${s ? ` (${s.label})` : ""} — remembered from a previous print on this roll.`);
+      const s = allSizes()[remembered];
+      console.log(`[label-memory] tag ${bc}: selected "${remembered}"${s ? ` (${s.label})` : ""}${colour} — remembered from a previous print on this roll.`);
       return bc;
     }
     // Exposed for the same reason as labelMemory: with a hand-made getStatus()
@@ -416,6 +480,290 @@
     // consumablesType: 1 } } }, true) — the auto-select path can be exercised from
     // the console with no printer attached.
     window.reviewTag = reviewTag;
+
+    // ── Roll registration ───────────────────────────────────────────────────────
+    // Registering a roll used to mean pasting a snippet into the desktop DevTools
+    // console. That is unusable for a shelf of rolls and impossible on the phone
+    // (Bluefy has no console) — which is the device where rolls actually get swapped.
+
+    // Printhead width per model, in pixels. NOT derivable from dpi: the M2-H and the
+    // B1 Pro are both 300 dpi with different heads. The B1 Pro's value is DISPUTED —
+    // docs/protocol-v4.md says 567, registry.json's T50x30 uses 584 (docs/NOTES.md
+    // § Two contradictions about printhead width, Vikunja 970). 584 is used here to
+    // stay consistent with the shipped registry; if the physical test says 567, this
+    // is the one place to change.
+    const PRINTHEAD_PX = { b1pro: 584, b1: 384, m2h: 567 };
+
+    let lastTag = null;              // filled by "Read tag" — the barcode is never typed
+
+    const rollNum = (id) => {
+      const v = parseFloat($(id).value);
+      return isFinite(v) && v > 0 ? v : null;
+    };
+
+    // Geometry for what is currently typed, or null while the form is incomplete.
+    function currentGeom() {
+      const w = rollNum("rollw"), h = rollNum("rollh");
+      const model = reg.models[$("model").value];
+      if (!w || !h || !model) return null;
+      return NiimbotLabelSize.sizeFromMm({
+        w_mm: w, h_mm: h, dpi: model.dpi, printhead_px: PRINTHEAD_PX[$("model").value],
+      });
+    }
+
+    // Show the pixels live, and SAY when the width was clamped to the printhead. A
+    // silent clamp is how a label quietly loses its right edge: the printer prints
+    // columns 0…W-1 and drops the rest.
+    function showCalc() {
+      const g = currentGeom();
+      if (!g) { $("rollcalc").textContent = "enter width and height in mm"; return; }
+      $("rollcalc").textContent = `${g.w_px} × ${g.h_px} px, stride ${g.stride}`;
+      if (g.clamped) {
+        const lost = ((g.label_px - g.w_px) / (reg.models[$("model").value].dpi / 25.4)).toFixed(1);
+        const span = document.createElement("span");
+        span.className = "clamp";
+        span.textContent = ` — width clamped from ${g.label_px} px to the `
+          + `${$("model").selectedOptions[0].text} printhead (${g.w_px}); `
+          + `the label's outer ~${lost} mm will not print`;
+        $("rollcalc").appendChild(span);
+      }
+    }
+    ["rollw", "rollh"].forEach((id) => $(id).addEventListener("input", showCalc));
+    $("model").addEventListener("change", showCalc);
+    showCalc();
+
+    // A size is geometry, so its id is derived from geometry: two rolls of the same
+    // dimensions on the same dpi ARE the same size, whatever they are called or
+    // coloured. Name and colour are per-roll and live in the barcode record instead.
+    const sizeIdFor = (w, h, dpi) => `C${w}x${h}_${dpi}`.replace(/\./g, "_");
+
+    function renderRolls() {
+      const rolls = labelMemory.all();
+      const custom = customSizes();
+      const keys = Object.keys(rolls);
+      $("rollcount").textContent = `(${keys.length} saved)`;
+      $("rolllist").innerHTML = "";
+      for (const bc of keys) {
+        const r = rolls[bc];
+        const s = allSizes()[r.size];
+        const row = document.createElement("div");
+        row.className = "rollrow";
+        // Built with DOM APIs, never innerHTML. `bc`, `name`, `color` and the size
+        // label are all untrusted: the Import JSON button exists precisely so this data
+        // can arrive from another device or another person, and this page holds a Web
+        // Bluetooth connection to a printer. textContent makes the whole class of
+        // injection impossible here rather than relying on escaping it correctly.
+        const txt = document.createElement("div");
+        const code = document.createElement("code");
+        code.textContent = bc;
+        txt.appendChild(code);
+        txt.appendChild(document.createTextNode(
+          " → " + (r.name ? r.name + " · " : "") + (s ? s.label : r.size)
+          + (r.color ? " · " + r.color : "")
+        ));
+        if (!s) {
+          const w = document.createElement("span");
+          w.className = "warn";
+          w.textContent = " (size not defined here)";
+          txt.appendChild(w);
+        }
+        const del = document.createElement("button");
+        del.type = "button";
+        del.textContent = "Forget";
+        del.addEventListener("click", () => {
+          labelMemory.forget(bc);
+          console.log(`[rolls] forgot tag ${bc}.`);
+          renderRolls();
+        });
+        row.appendChild(txt); row.appendChild(del);
+        $("rolllist").appendChild(row);
+      }
+      if (!keys.length) {
+        $("rolllist").innerHTML = '<p class="muted">nothing saved yet</p>';
+      }
+      // Custom sizes outlive the rolls that introduced them (a roll can be forgotten
+      // while its size stays in use), so they are counted separately rather than
+      // silently vanishing.
+      const nCustom = Object.keys(custom).length;
+      if (nCustom) {
+        $("rollcount").textContent = `(${keys.length} saved, ${nCustom} custom size${nCustom === 1 ? "" : "s"})`;
+      }
+    }
+
+    $("rollread").addEventListener("click", async () => {
+      $("rollread").disabled = true;
+      try {
+        const st = await Niimbot.getStatus();
+        const rfid = st && st.decoded && st.decoded.rfid;
+        if (!rfid || !rfid.tagPresent || !rfid.barCode) {
+          lastTag = null;
+          $("rolltag").textContent = "no tag detected — is a roll fitted and the lid closed?";
+          console.log("[rolls] no consumable tag detected.");
+          return;
+        }
+        lastTag = rfid;
+        $("rolltag").textContent = `${rfid.barCode} · serial ${rfid.serialNumber || "?"} · ${rfid.capacity != null ? rfid.capacity + " labels" : "capacity ?"}`;
+        console.log(`[rolls] tag ${rfid.barCode} read (serial ${rfid.serialNumber || "?"}).`);
+        // Pre-fill from what is already known about this roll, so re-saving does not
+        // mean retyping — and so a mistake is visible before it is overwritten.
+        const known = labelMemory.recall(rfid.barCode);
+        if (known) {
+          if (known.name) $("rollname").value = known.name;
+          if (known.color) $("rollcolor").value = known.color;
+          const s = allSizes()[known.size];
+          if (s && s.w_mm && s.h_mm) { $("rollw").value = s.w_mm; $("rollh").value = s.h_mm; showCalc(); }
+          console.log(`[rolls] already known as "${known.size}"${known.color ? " (" + known.color + ")" : ""}.`);
+        }
+      } catch (e) {
+        lastTag = null;
+        $("rolltag").textContent = "could not read the tag";
+        fail(e);
+      } finally {
+        $("rollread").disabled = false;
+      }
+    });
+
+    $("rollsave").addEventListener("click", () => {
+      const w = rollNum("rollw"), h = rollNum("rollh");
+      const geom = currentGeom();
+      if (!geom) { status("Rolls: enter a width and height in mm first."); return; }
+      const dpi = reg.models[$("model").value].dpi;
+      const id = sizeIdFor(w, h, dpi);
+      const name = $("rollname").value.trim();
+      const colour = $("rollcolor").value.trim();
+
+      // The size: shared geometry, stored beside the registry (never merged into it).
+      const sizes = customSizes();
+      if (!reg.sizes[id]) {
+        sizes[id] = {
+          label: (name ? name + " — " : "") + `${w} × ${h} mm`,
+          w_mm: w, h_mm: h, w_px: geom.w_px, h_px: geom.h_px, dpi: dpi,
+          margin: 10,
+        };
+        if (!saveCustomSizes(sizes)) { status("Rolls: could not save the size (storage refused)."); return; }
+      }
+      populateSizes();
+      $("size").value = id;
+      refresh();
+
+      // The roll: name and colour hang off the barcode, not off the geometry.
+      if (lastTag && lastTag.barCode) {
+        const prev = labelMemory.recall(lastTag.barCode) || {};
+        const rec = Object.assign({}, prev, { size: id });
+        if (name) rec.name = name; else delete rec.name;
+        if (colour) rec.color = colour; else delete rec.color;
+        if (labelMemory.remember(lastTag.barCode, rec)) {
+          console.log(`[rolls] saved tag ${lastTag.barCode} → "${id}"${colour ? " (" + colour + ")" : ""}.`);
+          status(`Rolls: saved ${lastTag.barCode} → ${w} × ${h} mm${colour ? " (" + colour + ")" : ""}.`);
+        } else {
+          status("Rolls: the size was saved but the roll record was not (storage refused).");
+        }
+      } else {
+        // Saving a size with no tag read is legitimate — you may be defining a size
+        // before the roll is fitted — but it must not look like a roll was registered.
+        console.log(`[rolls] size "${id}" saved, but NO tag was read, so no barcode was linked.`);
+        status(`Rolls: size ${w} × ${h} mm saved and selected. No tag read — press "Read tag" with the roll fitted to link it.`);
+      }
+      renderRolls();
+    });
+
+    // Copy JSON. localStorage is per-browser AND per-origin: rolls registered on the
+    // phone are invisible on the desktop and die with the browser profile. This is the
+    // only way out of that box, so a failure has to be loud.
+    $("rollcopy").addEventListener("click", async () => {
+      const payload = JSON.stringify({ sizes: customSizes(), rolls: labelMemory.all() }, null, 1);
+      const ok = await window.demoCopyText(payload);
+      $("rollcopy").textContent = ok ? "Copied ✓" : "Copy failed";
+      setTimeout(() => { $("rollcopy").textContent = "Copy JSON"; }, 1600);
+      if (!ok) {
+        // Never leave the user believing an empty clipboard is their data.
+        $("rolljson").style.display = "block";
+        $("rolljson").value = payload;
+        $("rolljson").select();
+        status("Rolls: the clipboard refused — the JSON is in the box below, select and copy it by hand.");
+      }
+    });
+
+    // Import: paste, press again to apply. Uses seed(), which FILLS GAPS ONLY — an
+    // import must not silently overwrite a size this device learned from a real print.
+    $("rollpaste").addEventListener("click", () => {
+      const box = $("rolljson");
+      if (box.style.display !== "block" || !box.value.trim()) {
+        box.style.display = "block";
+        box.value = "";
+        box.placeholder = 'paste the JSON here, then press "Import JSON" again';
+        box.focus();
+        return;
+      }
+      let data;
+      try { data = JSON.parse(box.value); }
+      catch (e) { status("Rolls: that is not valid JSON — " + e.message); return; }
+      if (!data || typeof data !== "object") { status("Rolls: the JSON must be an object."); return; }
+
+      // Imported JSON is UNTRUSTED — the whole point of this button is that it arrives
+      // from another device or another person. Nothing here is rendered as markup (the
+      // list is built with textContent), so this is not the last line of defence, but
+      // junk still must not reach storage: a stray key becomes a permanent entry, and a
+      // 10 MB string becomes a quota failure that costs the label memory.
+      const KEY_RE = /^[A-Za-z0-9._:-]{1,64}$/;
+      // Printable only, checked by character code so no regex escape has to survive
+      // the trip through this file: control characters would render as invisible junk
+      // in the list and in the log, where they are worse than useless.
+      const printable = (v) => {
+        for (let i = 0; i < v.length; i++) {
+          const c = v.charCodeAt(i);
+          if (c < 32 || c === 127) return false;
+        }
+        return true;
+      };
+      const text = (v, max) => (typeof v === "string" && v.length > 0 && v.length <= max
+        && printable(v)) ? v : null;
+      const num = (v, max) => (typeof v === "number" && isFinite(v) && v > 0 && v <= max) ? v : null;
+      let skipped = 0;
+
+      let nSizes = 0;
+      if (data.sizes && typeof data.sizes === "object") {
+        const sizes = customSizes();
+        for (const [k, s] of Object.entries(data.sizes)) {
+          if (reg.sizes[k] || sizes[k]) continue;              // never shadow what exists
+          if (!KEY_RE.test(k) || !s || typeof s !== "object") { skipped++; continue; }
+          // Rebuild the entry field by field rather than storing the object we were
+          // handed: an unknown key here would be carried into the size a print uses.
+          const clean = {
+            label: text(s.label, 64) || k,
+            w_px: num(s.w_px, 20000), h_px: num(s.h_px, 20000),
+            w_mm: num(s.w_mm, 2000), h_mm: num(s.h_mm, 2000),
+            dpi: num(s.dpi, 2400), margin: num(s.margin, 200) || 10,
+          };
+          if (!clean.w_px || !clean.h_px || !clean.dpi) { skipped++; continue; }
+          sizes[k] = clean; nSizes++;
+        }
+        if (nSizes) saveCustomSizes(sizes);
+      }
+
+      let cleanRolls = {};
+      if (data.rolls && typeof data.rolls === "object") {
+        for (const [bc, r] of Object.entries(data.rolls)) {
+          const rec = typeof r === "string" ? { size: r } : r;
+          if (!KEY_RE.test(bc) || !rec || typeof rec !== "object") { skipped++; continue; }
+          const size = text(rec.size, 64);
+          if (!size || !KEY_RE.test(size)) { skipped++; continue; }
+          const out = { size: size };
+          const nm = text(rec.name, 64); if (nm) out.name = nm;
+          const cl = text(rec.color, 32); if (cl) out.color = cl;
+          cleanRolls[bc] = out;
+        }
+      }
+      const nRolls = labelMemory.seed(cleanRolls);
+
+      populateSizes(); renderRolls();
+      box.style.display = "none"; box.value = "";
+      const msg = `Rolls: imported ${nSizes} size(s) and ${nRolls} roll(s). Existing entries were kept, not overwritten.`;
+      console.log("[rolls] " + msg);
+      status(msg);
+    });
+
+    renderRolls();
 
     // Learn from what the user actually did. Called only AFTER a print resolved
     // successfully, with the buttons still disabled, so this status read can never
@@ -428,10 +776,15 @@
         const st = await Niimbot.getStatus();
         const rfid = st && st.decoded && st.decoded.rfid;
         if (!rfid || !rfid.tagPresent || !rfid.barCode) return;
-        if (labelMemory.recall(rfid.barCode) === sizeId) {
+        // MERGE, never replace: the record may carry a colour and a name entered in the
+        // Rolls panel, and printing must not quietly wipe them. Only `size` is learned
+        // here, because only `size` is what the user just demonstrated on paper.
+        const prev = labelMemory.recall(rfid.barCode);
+        if (prev && prev.size === sizeId) {
           console.log(`[label-memory] tag ${rfid.barCode} already remembered as "${sizeId}".`);
-        } else if (labelMemory.remember(rfid.barCode, sizeId)) {
+        } else if (labelMemory.remember(rfid.barCode, Object.assign({}, prev, { size: sizeId }))) {
           console.log(`[label-memory] remembered tag ${rfid.barCode} → "${sizeId}".`);
+          renderRolls();
         }
       } catch (e) {
         console.log("[label-memory] could not read the tag after printing (" + ((e && e.message) || e) + ") — nothing remembered.");
@@ -523,7 +876,7 @@
     $("print").addEventListener("click", async () => {
       const model = reg.models[$("model").value];
       const sizeId = $("size").value;
-      const size = reg.sizes[sizeId];
+      const size = allSizes()[sizeId];
       const canvas = drawTest(size, $("text").value);
       $("print").disabled = true;
       try {
@@ -542,7 +895,7 @@
     $("print3copies").addEventListener("click", async () => {
       const model = reg.models[$("model").value];
       const sizeId = $("size").value;
-      const size = reg.sizes[sizeId];
+      const size = allSizes()[sizeId];
       const canvas = drawTest(size, $("text").value);
       $("print3copies").disabled = true;
       try {
@@ -559,7 +912,7 @@
     $("print3").addEventListener("click", async () => {
       const model = reg.models[$("model").value];
       const sizeId = $("size").value;
-      const size = reg.sizes[sizeId];
+      const size = allSizes()[sizeId];
       // 3 distinct labels so the print order — and the absence of a retract
       // between them — is obvious on the paper. Realistic (light) labels so the
       // non-copies path streams continuously; the dense buttons cover worst case.
@@ -586,7 +939,7 @@
     async function runDense(count) {
       const model = reg.models[$("model").value];
       const sizeId = $("size").value;
-      const size = reg.sizes[sizeId];
+      const size = allSizes()[sizeId];
       const off = document.createElement("canvas");
       const urls = [];
       for (let n = 1; n <= count; n++) {

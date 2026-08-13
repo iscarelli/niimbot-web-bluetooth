@@ -206,27 +206,30 @@ rather than a blanket claim:
   pause between labels (see the next point for what that pause probably is). The
   polyfill covers everything the driver needs: `namePrefix` filters, GATT,
   notifications and `writeValueWithoutResponse`.
-- **iOS prints *paced*, and whether it needs to is unknown.** `IS_MAC`
+- **iOS needs the pacing — measured on paper, 2026-08-13.** `IS_MAC`
   (`src/niimbot.js:107`) falls back to matching `/Mac/i` against the user agent, and
   **every iOS user agent contains `"like Mac OS X"`** — so `IS_MAC` is **`true` on an
-  iPhone**. Measured, not assumed: the connect line on the iPhone above reads
-  `mac=true`. Every iPhone print so far therefore went through the paced path, and
-  the short pause between labels is likely `PACE_MS`, not BLE throughput.
-  The consequence is a question, not an answer: **the unpaced (`"fast"`) path has
-  never run on iOS**, so nothing here shows whether the macOS burst-drop — a *blank*
-  page reported as 100% — happens on iOS or not. An earlier version of this section
-  claimed it does not. That claim had no basis and has been removed.
-- **How to answer it** (needs an iPhone, a B1 Pro and five labels you can spare):
-  1. Open the demo in Bluefy and set **Write mode → fast** (or `Niimbot.WRITE_MODE =
-     "fast"`). Leave *DEBUG* off.
-  2. Press **Print 5 dense labels (stress)** — dense noise is the worst case for the
-     unacked burst, which is what the macOS failure needed to show itself.
-  3. Read the connect line in the log panel first: it must say `effective=fast`. If it
-     says `paced`, the override did not take and the run proves nothing.
-  4. **Then look at the paper, not at the progress line.** Five correct labels ⇒ iOS
-     does not need the pacing and `IS_MAC` is over-broad there. Any blank or short
-     label ⇒ iOS drops unacked bursts like macOS, and the current default is right.
-  Either result is worth writing down here; "it reported 100%" is not a result.
+  iPhone** (the connect line on the iPhone reads `mac=true`). That was an accident of
+  implementation rather than a decision, so the unpaced path had never run on iOS and
+  the pacing had never been justified there. It is now, by measurement:
+
+  | Run (iPhone + Bluefy + B1 Pro, *Print 5 dense labels*, same roll) | On the paper |
+  |---|---|
+  | `WRITE_MODE = "fast"` | **4 labels, every one numbered `1`, noise band truncated** — and it reported success |
+  | `WRITE_MODE = "paced"` (control) | **5 labels, `1`–`5`, noise band full-height to the label edge** |
+
+  Only the write mode differed — same batch, same images, same roll — so the loss is
+  the unacked burst, not the batch code. **iOS drops unacked writes the way macOS
+  does**, and the current default is right. Note the failure signature: **it is not a
+  clean blank page.** Rows went missing *and* the page numbering did not advance —
+  four labels all read `1`. Why the number repeated is not established (the packet log
+  shows the printer's page counter stalling at 4 of 5, not what raster it reused), and
+  it does not need to be, because the write mode is what changed. What matters for
+  anyone diagnosing this: a corrupt run can look like a plausible print until you read
+  the numbers on the paper.
+- **Still open on iOS: is `PACE_MS = 10` the right amount?** Only `fast` (broken) and
+  the default pacing (correct) have been tried; nothing brackets the boundary between
+  them. The short pause between labels on the iPhone is `PACE_MS`, not BLE throughput.
 - **Not tried: B1 and M2-H on iOS.** These are the models that bundle frames
   (`BUNDLE_MAX = 240`, `src/niimbot.js:144`), and CoreBluetooth commonly caps an
   unacked write near 182 bytes — an oversized write can be truncated silently.
@@ -249,6 +252,14 @@ already-connected printer and hex-dumps the raw heartbeat/RFID bytes into the lo
 panel — capturing those next to what the printer physically shows (lid, paper, tag) is
 exactly how the confirmed fields got confirmed, and how the rest still can be.
 
+A **Rolls** panel (collapsed by default) registers a consumable without a console: press
+*Read tag* with the roll fitted, type the label's real size in mm and its colour, and
+save. The computed pixels appear live, and a width clamped to the printhead says so and
+how many mm will not print. Custom sizes are kept **beside** `registry.json`, never
+merged into it. *Copy JSON* puts sizes and rolls on the clipboard — `localStorage` is per
+browser and per origin, so what you register on the phone is invisible on the desktop —
+and if the clipboard refuses, it says so and shows the JSON to copy by hand.
+
 It also has an **on-screen log panel** mirroring everything the driver writes to the
 console, with a *Copy log* button, a **Write mode** selector (auto / fast / paced /
 acked → `Niimbot.WRITE_MODE`) and a `Niimbot.DEBUG` checkbox. That panel exists for
@@ -270,30 +281,64 @@ none, because you stop checking). On a miss it changes nothing.
 **The driver does not do this for you, on purpose.** `src/niimbot.js` reads no config
 and owns no UI: it takes the model and size from the caller, so it can't know which of
 *your* sizes a barcode means, and putting `localStorage` in it would break that
-contract. It gives you the one thing you can't get elsewhere — the barcode. Roughly 20
-lines in your app (see `demo/index.html`, `labelMemory` / `reviewTag`):
+contract. It gives you the one thing you can't get elsewhere — the barcode.
+
+The storage is a **separate, optional file**. Loading it is the opt-in; it never
+references `Niimbot`, so load order does not matter and you can use either alone:
+
+```html
+<script src="niimbot.js"></script>
+<script src="label-memory.js"></script>   <!-- optional -->
+<script src="label-size.js"></script>     <!-- optional -->
+```
 
 ```js
-const KEY = "my-app:size-by-barcode";
-const all = () => { try { return JSON.parse(localStorage.getItem(KEY) || "{}"); } catch { return {}; } };
+// `key` is required and has NO default: two apps on one origin share one localStorage,
+// so a default key would silently merge their memories.
+const mem = NiimbotLabelMemory.create({ key: "my-app:size-by-barcode" });
 
 // After identify/connect: restore what this roll printed with last time.
 const st = await Niimbot.getStatus();               // never let this break connecting
 const rfid = st && st.decoded && st.decoded.rfid;   // may be null: no tag, or a model
                                                     // that never answers RfidInfo
-if (rfid && rfid.tagPresent && all()[rfid.barCode]) selectSize(all()[rfid.barCode]);
+const rec = rfid && rfid.tagPresent && mem.recall(rfid.barCode);   // → { size, color, … }
+if (rec) selectSize(rec.size);
 
-// After a print SUCCEEDS: learn from what the user did.
-localStorage.setItem(KEY, JSON.stringify({ ...all(), [rfid.barCode]: selectedSizeId }));
+// After a print SUCCEEDS: learn from what the user did. Merge, so a colour or name
+// entered elsewhere is not wiped by printing.
+mem.remember(rfid.barCode, { ...mem.recall(rfid.barCode), size: selectedSizeId });
+
+// Bulk-load rolls you already know. Fills gaps ONLY: hand-typed must not overwrite what
+// a real print taught. `{ overwrite: true }` is there for the deliberate reset.
+mem.seed({ "6975746632324": { size: "T30x45", color: "white" } });
 ```
 
-Two things worth copying with it: wrap every `localStorage` access (it throws in
-Safari private mode and when cookies are blocked), and treat a `getStatus()` failure as
-"no memory this time", never as a failed connect or a failed print. The tag's
+`recall()` returns a **record**, not a size id — the tag carries no colour, so colour
+lives here alongside the size, and any extra key your app writes survives untouched. A
+value stored as a bare string by an older version reads back as `{ size }`; nothing is
+rewritten in bulk.
+
+`NiimbotLabelSize.sizeFromMm({ w_mm, h_mm, dpi, printhead_px })` turns a measurement into
+the `w_px`/`h_px`/`stride` a size entry needs, clamping the width to the printhead and
+telling you when it did — see § *Label geometry* in `docs/protocol-v4.md` for why that
+clamp is `min()` and not a flat rule.
+
+Two properties worth keeping if you write your own instead: every `localStorage` access
+is wrapped (it throws in Safari private mode and when cookies are blocked) so a storage
+failure costs the memory and never the print, and a `getStatus()` failure means "no
+memory this time", never a failed connect or a failed print. The tag's
 `consumablesType` is the same enum as `label_type` (1 = with gaps, 2 = black,
 3 = continuous, 4 = perforated, 5 = transparent, 6 = PVC tag, 10 = black mark gap,
 11 = heat-shrink tube), so a mismatch with the selected model is worth **warning**
 about — but not overriding: the field is marked `inferred` (only ever observed as `1`).
+
+Exercised against a real tag on a B1 Pro, 2026-08-13: the roll's barcode was learned
+from a print, restored on a later *Connect & identify* (the dropdown moved and the log
+panel said so), and reported without moving the dropdown on *Read status*. Two branches
+were **not** reached and stay unverified — a remembered size that the selected model
+does not offer, and the `consumablesType` mismatch warning, which needs a consumable
+whose type is not `1` and may not be reachable with stock rolls. Both can be driven from
+the console with a hand-made status object; the demo exposes `reviewTag` for that.
 
 ## Real-world use
 

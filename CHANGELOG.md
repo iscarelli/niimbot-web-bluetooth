@@ -19,9 +19,12 @@ All notable changes to this project are documented here. The format is based on
      throughput. It is more likely `PACE_MS`.
   3. `FORCE_PACING` was redundant on iPhone from the start: `IS_MAC` already paced
      there. The feature is fine; its documented reason for existing was not.
-  Whether iOS *needs* pacing is now an open question, and answering it needs an
-  override that can force `"fast"` — which `FORCE_PACING`, being one-directional,
-  cannot do.
+  Whether iOS *needed* the pacing was left open here, and `WRITE_MODE` (below) was
+  built to settle it. **It is settled, on paper, 2026-08-13:** the same 5-dense-label
+  batch on an iPhone printed 4 labels with a truncated raster under `"fast"` and 5
+  correct ones under `"paced"`. **iOS drops unacked writes like macOS**, so the
+  `IS_MAC` pacing is right on iOS — by accident of the user-agent match, but right.
+  See README § *iOS coverage* for the run and the failure signature.
 - **`getStatus()` reported `ribbonInserted: true` in 1.4.0, and it was wrong.** The B1
   Pro is direct-thermal and has no ribbon at all, yet the field read `true` in every one
   of six real captures. It came from a niimbluelib offset that was never checked against
@@ -35,6 +38,54 @@ All notable changes to this project are documented here. The format is based on
   cnt" — the consumable's DRM cap, provisioned at 120 % of nominal.
 
 ### Added
+- **`src/label-memory.js` — the barcode→label memory as an optional file.** It was ~40
+  lines living only in the demo, so every app that wanted it retyped them (and retyped
+  the `localStorage` guards it would get wrong). It cannot live in the driver, which
+  stays application-agnostic, so it ships as its own `<script>`: loading it is the
+  opt-in, and it never references `Niimbot`, so load order does not matter.
+  `NiimbotLabelMemory.create({ key, storage })` — **`key` is required with no default**,
+  because two apps on one origin share one `localStorage` and this project's own Pages
+  site hosts more than one page. `storage` is injectable, which is what lets it be
+  tested in Node with no browser.
+  The stored value is now a **record** (`{ size, color, … }`), not a bare size id: the
+  RFID tag carries no colour — the payload is fully accounted for with zero spare bytes
+  (`src/niimbot.js:464-465`) — so colour is application data and belongs here. Data
+  already on a device is **normalised on read, never rewritten in bulk**: a stored bare
+  string reads back as `{ size }`, and `remember(bc, "T50x30")` still works.
+  `seed(table)` bulk-loads a hand-written table and **fills gaps only** by default —
+  hand-typed must not silently overwrite what a real print taught.
+- **`src/label-size.js` — millimetres to `SetPageSize` pixels**, also optional, also
+  zero-dependency, pure arithmetic with no DOM and no storage.
+  `sizeFromMm({ w_mm, h_mm, dpi, printhead_px })` → `{ w_px, h_px, stride, clamped }`.
+  `w_px` is `min(label, printhead)`: the repo contains both cases — `registry.json`
+  uses the printhead width for a 50 mm label (584 px) and `docs/protocol-v4.md:370` uses
+  the label width for a 30 mm cable flag (354 px) — and `min()` is the only rule both
+  satisfy, unlike the doc's flat "always use the printhead width". The head width is a
+  **parameter, never a constant**, because which value is right for the B1 Pro is
+  unresolved (567 vs 584 — see `docs/NOTES.md`). `clamped` is returned so a caller can
+  say it clamped: a silent clamp is how a label loses its right edge.
+  Its harness anchors on the numbers the project arrived at independently — if the
+  helper disagrees with `docs/protocol-v4.md:370`, the helper is wrong.
+- **Demo: a Rolls panel, so registering a consumable is not a console job.** Read the
+  tag (the barcode is never typed), enter the label's real size in mm and its colour,
+  save. The computed pixels are shown live, and a width clamped to the printhead
+  **says so, with how many mm will not print**. Custom sizes are stored beside
+  `registry.json`, never merged into it — promoting a size into the shipped registry is
+  a deliberate step, not a side effect of typing millimetres on a phone.
+  **Copy JSON** puts both halves (sizes + rolls) on the clipboard — `localStorage` is
+  per-browser and per-origin, so rolls registered on the phone are invisible on the
+  desktop and die with the profile. If the clipboard refuses (Bluefy is third-party
+  WebKit), it **says so and shows the JSON in a selectable box** rather than leaving you
+  to paste stale clipboard content. Import fills gaps only, for the same reason `seed`
+  does.
+  Imported JSON is treated as **untrusted**, because the button exists so it can come
+  from another device or another person while the page holds a Web Bluetooth connection
+  to a printer: the roll list is built with DOM APIs and `textContent` rather than
+  `innerHTML` (so a barcode, name or colour cannot inject markup at all), and every
+  imported field is re-built against a strict shape — barcode and size id must match
+  `/^[A-Za-z0-9._:-]{1,64}$/`, text must be printable and length-capped, numbers must be
+  finite and bounded — rather than being stored as handed over.
+  Never run against a printer: the panel is verified by inspection and syntax only.
 - **Demo: the label size is remembered per RFID barcode.** The tag identifies the roll
   but does not carry its dimensions (the official app looks them up on Niimbot's server),
   and picking the wrong size silently ruins labels. So the demo learns rather than

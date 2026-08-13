@@ -23,6 +23,22 @@ replacing it takes `Object.defineProperty`). Keep such harnesses under `test/`;
 ```bash
 node test/pacing.test.js        # WRITE_MODE override harness: write spacing + write method (no printer)
 node test/status.test.js        # getStatus() decode harness (no printer)
+node test/label-memory.test.js  # barcode→record storage (no printer, no browser)
+node test/label-size.test.js    # mm→px geometry (no printer, no browser)
+```
+
+The demo's inline `<script>` cannot be checked by `node --check`. To parse it, extract
+the non-`src` script blocks and check each — that is a syntax gate, not a functional one,
+and it does not license claiming the demo works:
+
+```bash
+python - <<'PY'
+import io, re, subprocess
+s = io.open("demo/index.html", encoding="utf-8").read()
+for i, b in enumerate(re.findall(r'<script(?![^>]*\bsrc=)[^>]*>(.*?)</script>', s, re.S)):
+    io.open("/tmp/b%d.js" % i, "w", encoding="utf-8").write(b.replace("<\\/script>", "</script>"))
+    print(i, subprocess.run(["node", "--check", "/tmp/b%d.js" % i]).returncode)
+PY
 ```
 
 ## The verification that matters is physical
