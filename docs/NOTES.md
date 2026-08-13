@@ -60,11 +60,25 @@ full-width label silently loses its right edge — the failure would be invisibl
 a B1 Pro and look at the right edge. Clean edge ⇒ the head is ≥ 584. A strip missing on
 the right ⇒ the head is 567 and `registry.json` is over-wide. Tracked on Vikunja.
 
-## Pending: cable-flag sizes are documented but not in the registry
+## Cable flags: `h_px` is the area you want to print, not the label's full pitch
 
-`T30*45+50` has verified-consistent numbers in `docs/protocol-v4.md:370`
-(354 × 1122 px, stride 45 — 30 mm × 95 mm at 300 dpi) but **no entry in
-`registry.json`**, so the demo cannot select it and the label memory has no size id to
-point at. Note the protocol doc records a hardware-validated claim only for the B1
-`T50*30` row; the cable-flag numbers are arithmetically consistent but not marked as
-confirmed on paper.
+`docs/protocol-v4.md:370` lists `T30*45+50` as 354 × **1122** px — 30 × **95** mm, i.e.
+the flag (45 mm) *plus* the transparent tail (50 mm). Reading that table, it is natural
+to assume the full pitch is required and that a shorter `h_px` would desynchronise the
+feed.
+
+**It is not required.** Measured on a B1 Pro, 2026-08-13: a 30 × **45** mm size
+(354 × **531** px) printed correctly on a 30×45+50 cable roll, twice in a row, filling
+the flag. The printer registers on the gap itself, so `h_px` selects **how much area you
+are printing**, not how far the paper must advance.
+
+That makes 1122 and 531 both valid, for different intents — print across the tail, or
+print the flag only — and the choice belongs to the caller, like every other size
+decision (`CLAUDE.md`, *Project constraints*: the driver reads models and sizes from the
+caller). What the driver will not do is lay out around the fold; it prints the whole
+area it is handed, and where the fold lands is the application's problem.
+
+Still not in `registry.json`: neither variant has an entry, so the demo reaches them
+through a custom size (Rolls panel) rather than the shipped registry. Note also that the
+protocol doc records a hardware-validated claim only for the B1 `T50*30` row — the
+1122 px full-pitch variant remains arithmetic that nobody has put on paper.
