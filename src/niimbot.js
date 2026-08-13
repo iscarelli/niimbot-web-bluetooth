@@ -321,7 +321,17 @@
     logMsg(`char props: write=${!!props.write} writeNoResp=${!!props.writeWithoutResponse}`);
     await characteristic.startNotifications();
     characteristic.addEventListener("characteristicvaluechanged", onNotify);
-    device.addEventListener("gattserverdisconnected", () => { characteristic = null; });
+    // SAY IT. The printer drops the link on its own — it powers down when idle, and BLE
+    // links die for their own reasons — and this listener is the only moment anything
+    // knows. Clearing `characteristic` silently meant the next call failed with a bare
+    // "Not connected", several screens away from the cause, with nothing in between:
+    // on a phone, where this log panel is the only trace, that is unreadable. NOT gated
+    // behind DEBUG, for the same reason the connect summary line is not.
+    device.addEventListener("gattserverdisconnected", () => {
+      const wasConnected = characteristic != null;
+      characteristic = null;
+      if (wasConnected) logMsg("printer disconnected (link dropped — reconnect to continue)");
+    });
     // Initial connection packet (raw, 0x03 prefix — same as niimblue).
     await writeRaw(new Uint8Array([0x03, 0x55, 0x55, 0xc1, 0x01, 0x01, 0xc1, 0xaa, 0xaa]));
     await sleep(200);
