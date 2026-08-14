@@ -401,11 +401,18 @@ accumulated usage was refuted the same evening: the maintainer installed the app
 a phone — no history of any kind — and it showed the correct level as soon as the
 cartridge was swapped. So the value is readable; this sweep simply did not reach it.
 
-**Two places not yet looked at:**
+**What is left.** With `0x40` exhausted, `0x1A` ignoring its parameter, `0xDC` and `0xA5`
+identical across cartridges, the readable command space this driver can reach is spent.
+The remaining approach is not more probing — it is **capturing what the official app
+sends**, which is how this protocol was mapped in the first place. On Android that is
+Developer options → *Enable Bluetooth HCI snoop log*, use the app, pull the log, read it
+in Wireshark; the command appears directly. One place also remains unlooked-at:
 
-- **`0x40` beyond sub-code `0x20`.** The sweep stopped there for no reason other than an
-  arbitrary bound. `0x40` is an info read and unsupported sub-codes answer `00 01`, so
-  continuing to `0xFF` is safe.
+- ~~`0x40` beyond sub-code `0x20`~~ — **swept, 2026-08-13, and exhausted.** Every
+  sub-code from `0x21` to `0xFF` answers `00 01` ("not supported"), run twice: once with
+  a half-spent cartridge and once with a fresh one. Only `0x00–0x20` respond at all, and
+  those are byte-identical between the two. The `0x40` family holds nothing about ribbon
+  quantity.
 - **Other GATT characteristics.** The driver uses the one service and one characteristic
   that niimbluelib uses. The printer may expose more. Web Bluetooth will not enumerate
   services that were not declared in `optionalServices` before connecting, so this needs
