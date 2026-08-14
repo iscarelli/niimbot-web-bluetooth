@@ -92,6 +92,17 @@
       "margin": 6,
       "dpi": 300
     },
+    "T40x60": {
+      "_note": "40×60 @ 300 dpi, B1 Pro. Registered 2026-08-14 from a roll fitted on the maintainer's printer (tag 6972842748560, printLimit 150 / capacity 125 — 1.2, the same ratio as every other roll measured here). Geometry is arithmetic: 40 mm × 11.81 = 472, 60 mm × 11.81 = 709, and 472 is well inside the B1 Pro's head so nothing is clamped. It printed and the printer confirmed the page; nobody has yet measured the printed area against the label with a rule. NOTE ON TIME, because this is the largest size that ships: 709 rows is double a 50×30, and on a Mac (where the driver paces at 10 ms/write) the worst-case test image took 7.0 s to upload against 1.1 s to print. Real content — frame and text on white — collapses under run-length to a fraction of that; the corner-to-corner diagonals of the demo's stress label are what make it one packet per row.",
+      "label": "40 × 60 mm",
+      "code": "T40*60",
+      "w_mm": 40,
+      "h_mm": 60,
+      "w_px": 472,
+      "h_px": 709,
+      "margin": 10,
+      "dpi": 300
+    },
     "T30x45": {
       "_note": "Cable flag 30×45+50 @ 300 dpi, B1 Pro. h_px covers the 45 mm FLAG ONLY, not the 50 mm transparent tail: measured 2026-08-13, the printer registers on the gap itself, so a short h_px prints the flag and still advances correctly (docs/NOTES.md § Cable flags). w_px = 30 mm × 11.81 = 354, well inside the printhead, so nothing is clamped.",
       "label": "30 × 45 mm (cable flag)",

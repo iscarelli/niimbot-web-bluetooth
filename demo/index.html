@@ -88,6 +88,7 @@
   <button id="disconnect">Disconnect</button>
   <button id="readstatus">Read status</button>
   <button id="print">Connect and print</button>
+  <button id="printreal" title="Frame, headings, text and a barcode band — what a real label looks like, and what it really costs to send.">Print realistic label</button>
   <button id="print3copies">Print 3 copies (1 upload)</button>
   <button id="print3">Print 3-label batch</button>
   <button id="print5">Print 5-label batch (normal)</button>
@@ -387,6 +388,71 @@
       return c;
     }
 
+    // What people actually print, and therefore the only honest answer to "how long
+    // does a label take?". `drawTest` without `light` is the WORST case — its diagonals
+    // touch nearly every row and defeat run-length, so a 40×60 needed 589 writes (one
+    // per row) and 7.0 s to upload against 1.1 s to print, on a Mac at 10 ms/write.
+    // This one is deliberately ordinary: frame, heading, two data lines, a barcode band.
+    // Every band is a run of IDENTICAL rows, which is exactly what run-length collapses.
+    //
+    // Sizes are fractions of h_px, so it fits every label in the registry without a
+    // per-size layout — and a cursor refuses to run past the bottom rather than letting
+    // the canvas clip in silence, which is how a 354 px card once printed 365 px of
+    // content and lost the last line's descenders (docs/NOTES.md).
+    function drawReal(size, text, target) {
+      const c = target || $("preview");
+      c.width = size.w_px; c.height = size.h_px;
+      const W = c.width, H = c.height, m = size.margin || 10;
+      const x = c.getContext("2d");
+      x.fillStyle = "#fff"; x.fillRect(0, 0, W, H);
+      x.strokeStyle = "#000"; x.lineWidth = Math.max(2, Math.round(H * 0.005));
+      x.strokeRect(m, m, W - 2 * m, H - 2 * m);
+
+      const pad = m + Math.round(W * 0.05);
+      let y = m + Math.round(H * 0.04);
+      const fit = (px, what) => {
+        if (y + px > H - m) throw new Error(`"${what}" does not fit this label: ${y + px} > ${H - m} px`);
+        const at = y; y += px; return at;
+      };
+      // Width clips as silently as height does, and a 15 mm label is only 144 px wide,
+      // so "NIIMBOT TEST" at the heading size would run off the right edge with no error
+      // — you would just find half a word on the paper. Shrink to fit instead, but
+      // reserve the ORIGINAL height so shrinking one line never shifts the ones below it.
+      const put = (txt, px, bold) => {
+        const font = (n) => `${bold ? "bold " : ""}${n}px sans-serif`;
+        const maxW = W - 2 * pad;
+        let fs = Math.round(px);
+        x.font = font(fs);
+        while (fs > 6 && x.measureText(txt).width > maxW) { fs -= 1; x.font = font(fs); }
+        const at = fit(Math.round(px * 1.35), txt);
+        x.fillStyle = "#000";
+        x.textAlign = "left"; x.textBaseline = "top";
+        x.fillText(txt, pad, at);
+      };
+
+      put(text || "NIIMBOT", H * 0.095, true);
+      const rule = fit(Math.round(H * 0.03), "rule");
+      x.fillRect(pad, rule, W - 2 * pad, Math.max(2, Math.round(H * 0.006)));
+      put(`${size.w_mm || "?"} × ${size.h_mm || "?"} mm · ${size.dpi || "?"} dpi`, H * 0.05);
+      put(`${W} × ${H} px · density ${density()}`, H * 0.05);
+
+      // A barcode band: bar widths derived from the text so the same text always
+      // prints the same bars. Not a real symbology — this measures send cost and
+      // legibility, and claiming it scans would be a lie a scanner would catch.
+      const bh = Math.round(H * 0.22), top = fit(bh + Math.round(H * 0.02), "barcode");
+      let seed = 7;
+      for (const ch of (text || "NIIMBOT")) seed = (seed * 31 + ch.charCodeAt(0)) & 0xffff;
+      const rnd = () => ((seed = (seed * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff);
+      const unit = Math.max(2, Math.round(W * 0.006));
+      for (let bx = pad; bx < W - pad - unit; ) {
+        const w = unit * (1 + Math.floor(rnd() * 3));
+        x.fillRect(bx, top, Math.min(w, W - pad - bx), bh);
+        bx += w + unit * (1 + Math.floor(rnd() * 2));
+      }
+      put(new Date().toISOString().slice(0, 16).replace("T", " "), H * 0.045);
+      return c;
+    }
+
     // Worst case for the driver: random 1px noise makes every row a unique 0x85
     // row (no run-length savings) with ~half its bytes set — maximum data volume
     // and maximum bytes buffered ahead. A big readable number stays on top so you
@@ -672,13 +738,30 @@
       const geom = currentGeom();
       if (!geom) { status("Rolls: enter a width and height in mm first."); return; }
       const dpi = reg.models[$("model").value].dpi;
-      const id = sizeIdFor(w, h, dpi);
       const name = $("rollname").value.trim();
       const colour = $("rollcolor").value.trim();
 
+      // If a SHIPPED size already has these exact pixels at this dpi, use it instead of
+      // saving a second name for the same geometry. Duplicates are not wrong — they
+      // print identically — but they show up twice in the picker, one starred and one
+      // not, and the pair drifts the moment the shipped one is corrected: the copy keeps
+      // the old pixels and looks equally official. Measured case: four rolls registered
+      // by hand produced C50x30_300, C25x38_300 and C30x45_300, all three byte-identical
+      // to T50x30, T25x38 and T30x45. Geometry is the identity here, not the name.
+      const shipped = Object.keys(reg.sizes).find((k) => {
+        const s = reg.sizes[k];
+        return s.dpi === dpi && s.w_px === geom.w_px && s.h_px === geom.h_px;
+      });
+      const id = shipped || sizeIdFor(w, h, dpi);
+      if (shipped) {
+        console.log(`[rolls] ${w} × ${h} mm at ${dpi} dpi is exactly the shipped `
+          + `"${shipped}" (${geom.w_px} × ${geom.h_px} px) — linking the roll to it `
+          + `instead of saving a duplicate size.`);
+      }
+
       // The size: shared geometry, stored beside the registry (never merged into it).
       const sizes = customSizes();
-      if (!reg.sizes[id]) {
+      if (!shipped && !reg.sizes[id]) {
         sizes[id] = {
           label: (name ? name + " — " : "") + `${w} × ${h} mm`,
           w_mm: w, h_mm: h, w_px: geom.w_px, h_px: geom.h_px, dpi: dpi,
@@ -931,6 +1014,29 @@
         fail(e);
       } finally {
         $("print").disabled = false;
+      }
+    });
+
+    // Same print path as the button above — the only difference is the artwork, which
+    // is the whole point: it answers "how long does MY label take" instead of "how long
+    // does the stress pattern take". The elapsed time is reported next to the label's
+    // dimensions so the two are comparable across sizes and write modes.
+    $("printreal").addEventListener("click", async () => {
+      const model = reg.models[$("model").value];
+      const sizeId = $("size").value;
+      const size = allSizes()[sizeId];
+      $("printreal").disabled = true;
+      try {
+        const canvas = drawReal(size, $("text").value);
+        const t0 = Date.now();
+        await Niimbot.printImage(canvas.toDataURL("image/png"), { model, size, density: density(), onProgress: status });
+        status(`ok — realistic label sent (${size.w_px}×${size.h_px}, density ${density()}, `
+             + `${Niimbot.EFFECTIVE_WRITE_MODE}, ${((Date.now() - t0) / 1000).toFixed(1)} s).`);
+        await rememberAfterPrint(sizeId);
+      } catch (e) {
+        fail(e);
+      } finally {
+        $("printreal").disabled = false;
       }
     });
 

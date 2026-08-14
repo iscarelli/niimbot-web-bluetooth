@@ -6,6 +6,30 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 ### Added
+- **`registry.json` ships `T40x60`** — 40 × 60 mm at 300 dpi (472 × 709), from a roll on
+  the maintainer's B1 Pro (tag `6972842748560`, `printLimit` 150 / `capacity` 125 = **1.2**,
+  the same ratio as every roll measured here). It is now the largest size that ships, and
+  its `_note` says what that costs: 709 rows is double a 50×30, so on a Mac — where the
+  driver paces at 10 ms per write — the demo's *stress* label took **7.0 s to upload
+  against 1.1 s to print**.
+- **A "Print realistic label" button**, because that 7.0 s is not what a real label costs
+  and the demo had no way to show the difference. It draws what people actually print —
+  frame, heading, two data lines, a barcode band, a timestamp — where every band is a run
+  of identical rows and run-length does its job. The stress label's corner-to-corner
+  diagonals touch nearly every row and defeat it entirely (589 writes for 709 rows, one
+  per row). Same print path, same options; the status line reports size, density, write
+  mode and elapsed seconds, so two labels or two write modes can be compared honestly.
+  Its layout is fractions of `h_px` and **throws rather than clipping** if a block will
+  not fit, on both axes — a canvas drops out-of-bounds pixels without a word, which had
+  already cost one label's descenders and would silently halve a heading on a 144 px-wide
+  15 mm label.
+- **The Rolls panel reuses a shipped size when the geometry is identical** instead of
+  saving a private copy of it. Registering four rolls by hand had produced `C50x30_300`,
+  `C25x38_300` and `C30x45_300`, byte-identical to `T50x30`, `T25x38` and `T30x45`: the
+  picker showed each twice, one starred and one not. Duplicates print correctly, so the
+  cost only lands later — when the shipped entry is corrected, the copy keeps the old
+  pixels and still looks official. Matching is on `dpi` + `w_px` + `h_px`, because the
+  pixels are the identity; the roll's name and colour still attach to its barcode.
 - **The demo has a Density picker (1–5)**, next to Model and Label, feeding every print
   button. It starts at the selected model's default (marked *model default* in the list)
   and **resets when the model changes**, because a heat value chosen for one printer means
