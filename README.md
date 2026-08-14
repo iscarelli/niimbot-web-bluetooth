@@ -538,8 +538,10 @@ no app:
 
 ## Credits
 
-Protocol reverse-engineered and validated on the B1 Pro. External community
-reference: [niim.blue](https://niim.blue) / niimbluelib.
+Protocol reverse-engineered on the B1 Pro, and since validated on real hardware
+across five printers — **B1**, **B1 Pro**, **M2-H**, **D11_H** and **D110**; the
+[model table](#supported-printers) says which task each one speaks. External
+community reference: [niim.blue](https://niim.blue) / niimbluelib.
 
 ## License
 

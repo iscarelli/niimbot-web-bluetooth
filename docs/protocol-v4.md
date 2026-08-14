@@ -1,13 +1,17 @@
 # Niimbot Protocol V4 (D11 / B1 / B1 Pro / B21 line)
 
-Reverse-engineered and validated in the lab on the **Niimbot B1 Pro** and the
-**Niimbot B1**. Covers two print-task variants over the same frame: `v4`
+Reverse-engineered on the **Niimbot B1 Pro** and validated in the lab on five
+printers (see below). Covers two print-task variants over the same frame: `v4`
 (D110_M / D11_H / B1 Pro / B21 Pro, 300 dpi) and `b1` (B1 / B21 / D11, **protocol
 version 3**, 203 dpi). See [Print task variants](#print-task-variants-v4-vs-b1).
 
-> **Validated:** the **B1** (`b1`), **B1 Pro** (`v4`) and **M2-H** (`b1`, 300 dpi) are
-> tested on real hardware. The other models listed per family share the protocol and
-> should work, but are **untested** — treat their parameters as a starting point.
+> **Validated:** the **B1** (`b1`, 203 dpi), **B1 Pro** (`v4`, 300 dpi), **M2-H**
+> (`b1`, 300 dpi), **D11_H** (`v4`, 300 dpi) and **D110** (`b1`, 203 dpi) are tested
+> on real hardware. The other models listed per family share the protocol and should
+> work, but are **untested** — treat their parameters as a starting point. And note
+> that sharing a task variant is not sharing behaviour: the D110 speaks the same `b1`
+> sequence as the B1 and the M2-H and still accepts only **one page per job**, which
+> is why flow control hangs off the model and not the family.
 >
 > **One section is validated only in part:** [Consumable status](#consumable-status)
 > (the `0xDC`/`0x1A` response layouts). Five of its fields are now confirmed against
