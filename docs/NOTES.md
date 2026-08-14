@@ -369,7 +369,7 @@ Already known from the handshake: `40[08]`=model id, `40[09]`=`01 36`, `40[0a]`=
 `40[0a]` — all of which the driver or niimbluelib call charge level. It did **not**
 change when the ribbon was removed entirely, so it is not the ribbon.
 
-### Remaining ribbon is NOT readable here — negative result, 2026-08-13
+### Remaining ribbon: not in the space swept so far (2026-08-13)
 
 The official NIIMBOT app shows how much ribbon is left, so the information exists
 somewhere. It is not in anything this driver can ask for.
@@ -388,18 +388,28 @@ their own — `d[1]` changed with nothing touched at all, and `d[3]` moved `4b �
 between two reads **60 ms apart in one session**.
 
 So a caller can know *whether* a ribbon is fitted (`getStatus().decoded.heartbeat
-.ribbonInserted`) but not *how much is left*, and no amount of re-probing this space will
-change that.
+.ribbonInserted`) but not *how much is left* — not from this space. Re-probing the same
+commands will not change that; widening the search might.
 
 **Scope of the negative.** It covers the commands that are safe to sweep — reads. The
 top-level opcode space was deliberately NOT swept: it contains commands that print, feed,
 write RFID and update firmware, and probing those blind risks the printer. So this rules
 out the readable space, not the protocol.
 
-**Where it could still be**, none of it verified: the app may compute the figure itself
-from accumulated usage rather than reading it; or it may use a transport or command class
-not reachable from Web Bluetooth. Both are guesses, and neither is worth acting on
-without evidence.
+**The figure DOES come from the printer.** A guess that the app might compute it from
+accumulated usage was refuted the same evening: the maintainer installed the app fresh on
+a phone — no history of any kind — and it showed the correct level as soon as the
+cartridge was swapped. So the value is readable; this sweep simply did not reach it.
+
+**Two places not yet looked at:**
+
+- **`0x40` beyond sub-code `0x20`.** The sweep stopped there for no reason other than an
+  arbitrary bound. `0x40` is an info read and unsupported sub-codes answer `00 01`, so
+  continuing to `0xFF` is safe.
+- **Other GATT characteristics.** The driver uses the one service and one characteristic
+  that niimbluelib uses. The printer may expose more. Web Bluetooth will not enumerate
+  services that were not declared in `optionalServices` before connecting, so this needs
+  a list of candidate UUIDs first — it cannot be discovered blind from the browser.
 
 **Why this is written down.** A negative result that nobody records gets re-derived. This
 sweep cost an evening; the next person to wonder where ribbon level lives should read
