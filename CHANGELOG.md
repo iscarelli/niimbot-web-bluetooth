@@ -5,6 +5,15 @@ All notable changes to this project are documented here. The format is based on
 [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
+### Changed
+- `registry.json`: the `T25x38` cable flag is **confirmed on paper** (2026-08-13, B1 Pro,
+  on a Mac so the write path was `paced`). It shipped in 2.0.0 with a `_note` saying the
+  geometry was arithmetic plus the `T30x45` precedent; that note now records the
+  measurement instead. Two consecutive labels printed correctly, filling the flag with no
+  right-edge loss, and the second registered properly — so the flag-only `h_px`
+  convention holds on a second consumable, not just the one it was derived from.
+  The 2.0.0 notes below are left as they were: they described the state at release, and
+  a changelog is a record, not a live document.
 
 ## [2.0.0] - 2026-08-13
 ### Fixed

@@ -81,7 +81,7 @@
       "dpi": 300
     },
     "T25x38": {
-      "_note": "Cable flag 25×38+40 @ 300 dpi, B1 Pro. Same convention as T30x45: h_px is the 38 mm flag, not the 40 mm tail. w_px = 25 mm × 11.81 = 295. NOT yet confirmed on paper — the geometry is arithmetic plus the T30x45 precedent.",
+      "_note": "Cable flag 25×38+40 @ 300 dpi, B1 Pro. Same convention as T30x45: h_px is the 38 mm flag, not the 40 mm tail. w_px = 25 mm × 11.81 = 295. Confirmed on paper 2026-08-13: two consecutive labels printed correctly, filling the flag with no right-edge loss, and the second registered properly — so the advance is right at this h_px too.",
       "label": "25 × 38 mm (cable flag)",
       "code": "T25*38+40",
       "w_mm": 25,

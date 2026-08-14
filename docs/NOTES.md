@@ -88,10 +88,17 @@ the flag (45 mm) *plus* the transparent tail (50 mm). Reading that table, it is 
 to assume the full pitch is required and that a shorter `h_px` would desynchronise the
 feed.
 
-**It is not required.** Measured on a B1 Pro, 2026-08-13: a 30 × **45** mm size
-(354 × **531** px) printed correctly on a 30×45+50 cable roll, twice in a row, filling
-the flag. The printer registers on the gap itself, so `h_px` selects **how much area you
-are printing**, not how far the paper must advance.
+**It is not required.** Measured on a B1 Pro, 2026-08-13, on **two different consumables**:
+
+| size printed | `w_px × h_px` | roll | result |
+|---|---|---|---|
+| 30 × 45 mm | 354 × 531 | 30×45+50 | two labels in a row, both filling the flag |
+| 25 × 38 mm | 295 × 449 | 25×38+40 | two labels in a row, both filling the flag |
+
+In both, the label *after* the first came out registered, which is the half that matters:
+had the short `h_px` desynchronised the feed, the second label would have drifted. The
+printer registers on the gap itself, so `h_px` selects **how much area you are printing**,
+not how far the paper must advance.
 
 That makes 1122 and 531 both valid, for different intents — print across the tail, or
 print the flag only — and the choice belongs to the caller, like every other size
@@ -99,7 +106,7 @@ decision (`CLAUDE.md`, *Project constraints*: the driver reads models and sizes 
 caller). What the driver will not do is lay out around the fold; it prints the whole
 area it is handed, and where the fold lands is the application's problem.
 
-Still not in `registry.json`: neither variant has an entry, so the demo reaches them
-through a custom size (Rolls panel) rather than the shipped registry. Note also that the
-protocol doc records a hardware-validated claim only for the B1 `T50*30` row — the
-1122 px full-pitch variant remains arithmetic that nobody has put on paper.
+Both flag-only variants ship in `registry.json` as `T30x45` and `T25x38` (2.0.0). What
+does **not** ship, and stays arithmetic nobody has put on paper, is the **full-pitch**
+reading — the 1122 px figure in the protocol doc. Printing across the transparent tail
+has never been tried.
