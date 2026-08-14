@@ -451,6 +451,31 @@ whether the B1 Pro's head is 567 or 584. Connect a B1 Pro and run:
 Bytes 4-5 of the reply are the answer. Confirm it the same way if it matters: two solid
 blacks, one at the reported width and one above it, and compare.
 
+## What a label costs to send: stress vs realistic, measured (2026-08-14)
+
+Same printer (B1 Pro), same label (`T40x60`, 472 × 709), same Mac, two minutes apart —
+the demo's *stress* artwork and its *realistic* one:
+
+    realistic   142 row-writes   upload 1.7 s   total 4.4 s
+    stress      589 row-writes   upload 6.8 s   total 8.6 s
+
+**4.1× the writes, 4.1× the upload.** Nothing else moves, because the cost of an upload is
+`PACE_MS × writes` and nothing else — the same relation the 5-page batch measurement found.
+The difference in the artwork is one thing: the stress label's corner-to-corner diagonals
+touch nearly every row, so run-length encodes 589 packets for 709 rows — one per row. The
+realistic label is bands of identical rows and collapses 4×.
+
+**Do not compute print time by subtracting the upload.** The printer starts printing while
+data is still arriving: when the stress upload finished, the page was already **36% printed**,
+so the 1.1 s that followed is a remainder, not a cost — and quoting it as "1.1 s to print"
+(as an earlier version of the `T40x60` note did) understates the mechanical time by half.
+The clean figure comes from the realistic run, where the upload finishes first and the print
+then takes **~2.3 s**. That is what 709 rows of feed costs on this printer.
+
+Consequence for anyone benchmarking this driver: **measure end to end, and say which artwork
+you used.** A "how fast is it?" answer without the packet count is unreproducible — the same
+label, same printer and same second can differ 2× on total time purely by what is drawn.
+
 ## Density 1–5 on the D11_H: five labels, no visible difference (2026-08-13)
 
 The driver gained a per-print `density` (1–5, the scale the official app shows). The first
