@@ -450,3 +450,39 @@ whether the B1 Pro's head is 567 or 584. Connect a B1 Pro and run:
 
 Bytes 4-5 of the reply are the answer. Confirm it the same way if it matters: two solid
 blacks, one at the reported width and one above it, and compare.
+
+## Density 1–5 on the D11_H: five labels, no visible difference (2026-08-13)
+
+The driver gained a per-print `density` (1–5, the scale the official app shows). The first
+thing printed with it was a control: the same solid-black 144 × 354 label five times, the
+density value in white in the middle, one label per value.
+
+**All five came out identical.** No change in blackness, no bleed at 5, no washing out at 1.
+
+That is an observation, not a conclusion, and it has two very different explanations:
+
+1. **The test can't see it.** Solid black is saturated by definition — on direct thermal,
+   more heat cannot make a fully-burned dot blacker. Density shows up in *thin* features:
+   hairlines closing up, small text filling in, the back of the label marking. A black
+   rectangle is the least sensitive target that could have been chosen.
+2. **The printer ignored it.** `0x21` is acked (`0x31`), but an ack means *parsed*, not
+   *applied* — the D11_H is a new model here and nothing has verified it honours the field.
+
+**The discriminator needs no labels: read the value back.** `0x40[0x01]` is Density in
+niimbluelib's info enum, and the driver's own sweep skips it (`src/niimbot.js:438` reads
+`08 0b 0d 0a 07 03 0c 09`). Set, then read:
+
+    await Niimbot.identify(reg.models.d11h);
+    const info = async () => (await Niimbot.probe(0x40, [0x01], 800));
+    console.log('antes', await info());
+    await Niimbot.probe(0x21, [1], 800);  console.log('após 1', await info());
+    await Niimbot.probe(0x21, [5], 800);  console.log('após 5', await info());
+
+The test validates itself: if the returned byte *tracks what was set*, it both identifies
+the field and proves the printer took the value — which points at (1), and the next test is
+a **hairline chart** rather than a black rectangle. If the byte never moves, it points at
+(2), and the question becomes whether this model wants the density somewhere else in the
+sequence or on a different scale.
+
+Until one of those runs, the honest statement is the one in the changelog: the driver sends
+what the caller asked for, and **no model has had its density verified on paper**.

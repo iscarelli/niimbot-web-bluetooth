@@ -5,6 +5,8 @@ All notable changes to this project are documented here. The format is based on
 [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
+
+## [2.1.0] - 2026-08-13
 ### Fixed
 - **Connecting with no `name_prefixes` now discovers instead of finding nothing.** It
   fell back to `{ services: [SVC_UUID] }`, which looks like a discovery filter and is
@@ -22,8 +24,14 @@ All notable changes to this project are documented here. The format is based on
   value. It is **validated before the printer is touched** — an out-of-range value throws
   and *nothing* is written, asserted in `test/unconfirmed.test.js`, because this is the
   one setting that controls how hard the printhead burns. Strings are accepted (`"4"`),
-  since an HTML `<select>` yields them. **Whether every model accepts all five values is
-  not established** — nothing here has measured a per-model maximum.
+  since an HTML `<select>` yields them.
+  **No model has had its density verified on paper, and the one attempt was inconclusive.**
+  Five solid-black labels printed on a D11_H at densities 1…5 came out *identical* — which
+  is exactly what you would expect both if the printer ignored the setting and if the test
+  was blind to it, because solid black is saturated and cannot get blacker. `docs/NOTES.md`
+  has the discriminator, and it costs no labels: read the value back with `0x40[0x01]`
+  after setting it. So the guarantee here is narrow and worth stating plainly — the driver
+  **sends** what the caller asks for; what the printer does with it is unmeasured.
 - **The D11_H is registered — model only, deliberately no size yet.** Found by open
   discovery (it advertises `D11_H-…`), **model id 528, protocol 5**, and the `v4` command
   sequence prints on it: solid black came out on the first attempt, which is what
@@ -448,7 +456,8 @@ All notable changes to this project are documented here. The format is based on
   (`v4`, 300 dpi), reverse-engineered protocol V4 documentation, and a standalone demo.
 - Multi-label batches print as one continuous job (no stop/retract between labels).
 
-[Unreleased]: https://github.com/iscarelli/niimbot-web-bluetooth/compare/v2.0.0...HEAD
+[Unreleased]: https://github.com/iscarelli/niimbot-web-bluetooth/compare/v2.1.0...HEAD
+[2.1.0]: https://github.com/iscarelli/niimbot-web-bluetooth/compare/v2.0.0...v2.1.0
 [2.0.0]: https://github.com/iscarelli/niimbot-web-bluetooth/compare/v1.4.0...v2.0.0
 [1.4.0]: https://github.com/iscarelli/niimbot-web-bluetooth/compare/v1.3.5...v1.4.0
 [1.3.5]: https://github.com/iscarelli/niimbot-web-bluetooth/compare/v1.3.4...v1.3.5
