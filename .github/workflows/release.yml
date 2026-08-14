@@ -21,7 +21,7 @@ on:
   workflow_dispatch: # allow a manual run from the Actions tab
 
 permissions:
-  contents: read
+  contents: write # create the GitHub Release (read is enough for the publish itself)
   id-token: write # REQUIRED for OIDC trusted publishing + provenance
 
 jobs:
@@ -53,3 +53,32 @@ jobs:
       # No dependencies / no build — just publish what's tracked at this tag.
       - name: Publish (OIDC, public, with provenance)
         run: npm publish --access public --provenance
+
+      # A tag is not a release. Pushing v2.2.0 published the package while the repo's
+      # front page still announced v1.3.5 for two months and four versions, because the
+      # README's `github/v/release` badge reads the Releases page and nothing was
+      # creating one. Half a trigger fails silently — nothing errors, the artefact just
+      # never appears — so the release now happens in the same step that publishes.
+      #
+      # Notes come from CHANGELOG.md: the section for this exact version, which is the
+      # record written when each task was retired. If the tag has no section the step
+      # FAILS rather than shipping an empty release — a release that says nothing is
+      # worse than the missing one, because it looks like the version did nothing.
+      - name: Create the GitHub Release from CHANGELOG.md
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VER="${GITHUB_REF_NAME#v}"
+          # No regex on purpose: in awk `~` binds tighter than concatenation, so the
+          # obvious `$0 ~ "^## \\[" v "\\]"` silently matches the wrong thing and every
+          # section comes back empty. index()==1 is unambiguous.
+          awk -v h="## [$VER]" '
+            index($0, h) == 1 { on = 1; next }
+            on && /^## / { exit }
+            on { print }
+          ' CHANGELOG.md > notes.md
+          if [ "$(wc -l < notes.md)" -lt 2 ]; then
+            echo "::error::CHANGELOG.md has no '## [$VER]' section — refusing to ship an empty release"
+            exit 1
+          fi
+          gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --notes-file notes.md

@@ -10,10 +10,10 @@
 printers — print straight from the browser, with no intermediary app and no
 dependencies.
 
-Reverse-engineered and validated on real hardware (**Niimbot B1**, **B1 Pro**
-and **M2-H**). Two print-task variants over the same frame cover the
-**B1 Pro / B21 Pro / D11** line (300 dpi, `v4`) and the **B1 / M2-H / B21** line
-(`b1`, mostly protocol 3) — chosen automatically per connected printer.
+Reverse-engineered and validated on real hardware (**Niimbot B1**, **B1 Pro**,
+**M2-H** and **D11_H**). Two print-task variants over the same frame cover the
+**B1 Pro / D11_H / B21 Pro / D110_M** line (300 dpi, `v4`) and the **B1 / M2-H / B21**
+line (`b1`, mostly protocol 3) — chosen automatically per connected printer.
 
 ### 🖨 [Try the live demo →](https://iscarelli.github.io/niimbot-web-bluetooth/demo/)
 
@@ -25,20 +25,22 @@ label. (Web Bluetooth needs HTTPS — the live demo and `localhost` both qualify
        alt="Pairing a Niimbot printer and printing a label from the browser demo" width="640">
 </p>
 
-<!-- TODO: record docs/demo.gif (~8–12 s, ≤640 px wide, a few MB): open the live demo,
-     click "Connect & identify printer", pick the printer, print a label. Tools: ScreenToGif
-     (Windows) or a screen recording → gif. Commit it at docs/demo.gif and this image renders
-     on GitHub and npm. Until then the image above shows a broken-link icon. -->
-
-
 ## Contents
 
-| Path | What it is |
-|---|---|
-| `src/niimbot.js` | Generic driver, no dependencies/build. Exposes `window.Niimbot`. |
-| `registry.json` | Registry of printer models + label sizes. |
-| `docs/protocol-v4.md` | Protocol V4 documentation (opcodes, frame, flow, geometry). |
-| `demo/index.html` | Standalone demo: pair and print a test label. |
+| Path | What it is | In the npm package |
+|---|---|---|
+| `src/niimbot.js` | Generic driver, no dependencies/build. Exposes `window.Niimbot`. | ✅ |
+| `src/label-memory.js` | **Optional** add-on: remember a label size per roll barcode. Never referenced by the driver. | ✅ |
+| `src/label-size.js` | **Optional** add-on: mm → px geometry, clamped to the printhead. | ✅ |
+| `registry.json` | Registry of printer models + label sizes. | ✅ |
+| `docs/protocol-v4.md` | Protocol V4 documentation (opcodes, frame, flow, geometry). | ✅ |
+| `docs/NOTES.md` | Measurements, negative results and the reasoning behind the numbers. | — |
+| `demo/index.html` | Standalone demo: pair and print a test label. | — |
+| `test/*.test.js` | Dependency-free Node harnesses — no printer, no runner. | — |
+
+The two `label-*.js` files ship but are **inert until you load them**: they attach
+`window.NiimbotLabelMemory` / `window.NiimbotLabelSize` and the driver never looks for
+either. Take one, both or neither.
 
 ## Supported printers
 
@@ -47,11 +49,19 @@ label. (Web Bluetooth needs HTTPS — the live demo and `localhost` both qualify
 | **Niimbot B1 Pro** | `v4` | 300 | 4097 | ✅ Validated on real hardware |
 | **Niimbot B1** | `b1` | 203 | 4096 | ✅ Validated on real hardware |
 | **Niimbot M2-H** | `b1` | 300 | 4608 | ✅ Validated on real hardware |
+| **Niimbot D11_H** | `v4` | 300 | 528 | ✅ Validated on real hardware |
 
-These three are in `registry.json` and tested end-to-end. Other printers on the same
-two protocol families — **`v4`**: D11_H / B21 Pro / D110_M; **`b1`**: B21 / D11 / D110 /
-B21S — are likely compatible but **untested**. To try one, add a model entry to
-`registry.json` (copy an existing model, set its `task`/`dpi`/`id`); please report results.
+These four are in `registry.json` and tested end-to-end. Other printers on the same
+two protocol families — **`v4`**: B21 Pro / D110_M; **`b1`**: B21 / D11 / D110 / B21S —
+are likely compatible but **untested**. To try one, add a model entry to `registry.json`
+(copy an existing model, set its `task`/`dpi`/`id`); please report results.
+
+> **The D11_H is the worked example of doing that.** It was found with the chooser open
+> to everything (no `name_prefixes`), reported **model id 528, protocol 5**, and the `v4`
+> sequence printed on the first attempt. Its printable width is **144 px, not the 177 px
+> that 15 mm implies** — the head is narrower than the label, so ~1.4 mm on each side
+> never prints. That was settled by printing solid black at 177 and at 144 and getting
+> identical widths, and it agrees with what the printer reports in `probe(0xdc,[0x03])`.
 
 > The driver auto-detects the connected model (see *Selecting your printer*), so it
 > picks the right `task` and flow control even though several models share a BLE name.
@@ -79,6 +89,10 @@ The app picks the printer by passing a **`model`** and **`size`** object (both f
   | `T50x30_m2h` | **M2-H** | **567** | a deliberate ~1.4 mm right margin — see below |
   | `T50x30_b1` | B1 | 384 | 203 dpi |
 
+  The same trap has a second form: `T15x30` is 300 dpi too, but its `w_px` of **144** is
+  the D11_H's *printhead*, not 15 mm of label. Offer it for any other 300 dpi printer and
+  you get a 12 mm-wide print on a wider label.
+
   Filtering only by dpi offers both 300 dpi entries for either printer, and picking the
   wrong one is silent. **`w_px` is not "the printhead width"** — the driver sends it as
   `W` in `SetPageSize`, the printer prints columns `0 … W-1`, and anything past the head
@@ -100,12 +114,31 @@ The app picks the printer by passing a **`model`** and **`size`** object (both f
   `Niimbot.printer.modelId` against `id` in `registry.json`, and offer only the sizes
   belonging to that model.
 
+  **The sizes that ship**, all validated on the printer named:
+
+  | id | printer | mm | dpi | px (`w_px × h_px`) |
+  |---|---|---|---|---|
+  | `T50x30` | B1 Pro | 50 × 30 | 300 | 584 × 354 |
+  | `T50x30_b1` | B1 | 50 × 30 | 203 | 384 × 240 |
+  | `T50x30_m2h` | M2-H | 50 × 30 | 300 | 567 × 354 |
+  | `T15x30` | D11_H | 15 × 30 | 300 | **144** × 354 |
+  | `T25x38` | B1 Pro | 25 × 38 | 300 | 295 × 449 |
+  | `T30x45` | B1 Pro | 30 × 45 | 300 | 354 × 531 |
+  | `T40x60` | B1 Pro | 40 × 60 | 300 | 472 × 709 |
+
+  Two conventions in that table are not obvious and each has a `_note` in
+  `registry.json` explaining why. **`T25x38` and `T30x45` are cable flags** (`T25*38+40`,
+  `T30*45+50`): `h_px` covers the printed **flag only**, not the transparent tail, because
+  the printer registers on the gap itself and a short `h_px` still advances correctly.
+  And **`T15x30`'s width is the printhead, not the label** — 15 mm would be 177 px and the
+  head clips at 144.
+
 **Auto-identification.** The B1 and B1 Pro advertise the same BLE name (`B1…`), but
 the driver **does identify which is which**: on connect it asks the printer for its
 model id (`PrinterInfo 0x40[08]`) and protocol version (`PrinterStatusData 0xA5`) —
 exactly how niim.blue tells them apart — and exposes it as **`Niimbot.printer`**
 (`{ modelId, protocolVersion, label, task, dpi }`). Validated ids: **B1 = 4096**,
-**B1 Pro = 4097**. Two safeguards follow:
+**B1 Pro = 4097**, **M2-H = 4608**, **D11_H = 528**. Two safeguards follow:
 
 - **`Niimbot.identify(model)`** connects and returns that info *without* printing, so
   the app can auto-select the right model/size (the demo does this — match `model.id`
@@ -123,12 +156,16 @@ On the first connect the browser shows its Bluetooth chooser (filtered by
 <script src="src/niimbot.js"></script>
 <script>
   // Pull these from registry.json — shown inline here for clarity.
-  // B1 (203 dpi):   task "b1",  size 384×240
-  // B1 Pro (300dpi): task "v4", size 584×354
+  // B1 (203 dpi):    task "b1", size 384×240
+  // B1 Pro (300 dpi): task "v4", size 584×354
   const model = { name_prefixes: ["B1"], task: "b1", density: 3, label_type: 1, speed: 1 };
   const size  = { w_px: 384, h_px: 240, offset_y_px: 4 };   // T50×30 on the B1
 
-  if (Niimbot.isSupported()) {
+  // A plain <script> has no top-level await, so wrap the calls. (Inside a
+  // <script type="module">, or an event handler, you can await directly.)
+  (async () => {
+    if (!Niimbot.isSupported()) return;
+
     // One label:
     await Niimbot.printImage("/path/to/label.png", {
       model, size, onProgress: (s) => console.log(s),
@@ -139,12 +176,21 @@ On the first connect the browser shows its Bluetooth chooser (filtered by
 
     // N distinct labels — one continuous job, streamed back-to-back:
     await Niimbot.printBatch([url1, url2, url3], { model, size });
-  }
+
+    // Turn the heat up for stock that needs it (1–5, default from the model):
+    await Niimbot.printImage("/path/to/label.png", { model, size, density: 5 });
+  })();
 </script>
 ```
 
-The image must be exactly `w_px × h_px`. The driver thresholds it to 1-bit
-(luminance < 128 = black) and sends it over BLE.
+**Any image size works** — the driver draws it onto a `w_px × h_px` canvas
+(`src/niimbot.js:718`), so a source of different dimensions is **stretched to fit, with
+no regard for aspect ratio**. Supply it at the label's ratio unless you want it
+distorted. It is then thresholded to 1-bit: a pixel is black when its luminance is
+< 128 **and** its alpha is > 32, so anything nearly transparent prints as white.
+
+The call throws before touching the printer if `density` is outside 1–5, or — after
+connecting — if the model's `task`/`dpi` does not match the printer that answered.
 
 ### API
 
@@ -184,6 +230,17 @@ The image must be exactly `w_px × h_px`. The driver thresholds it to 1-bit
   **A rejection means "check the paper", not "nothing printed"**: PrintEnd is sent before
   the throw, so the paper is fed out and retracted, and some labels may have come out.
 - `Niimbot.identify(model)` → connect and return `Niimbot.printer` without printing.
+- `Niimbot.connect(model)` / `Niimbot.disconnect()` → open or drop the link by hand. The
+  print calls connect for you; these exist for an app that wants to pair once and keep
+  the connection. The printer also drops it on its own (it powers down when idle) and the
+  driver logs `printer disconnected (link dropped — reconnect to continue)` when it does.
+- `Niimbot.probe(cmd, data, timeoutMs)` → **a diagnostic, not API.** Sends one command and
+  returns `{ cmd, data }` or `null`, accepting any response opcode. It is how you ask a
+  printer about itself instead of guessing — `probe(0xdc,[0x03])` for the printhead width,
+  `probe(0x40,[0x01])` for the current density. Nothing in the driver calls it.
+  ⚠ **Sweep sub-codes, not top-level opcodes.** Reading `0x40[00..20]` is reading; walking
+  the top-level command space blind is not — this protocol has commands that print, feed,
+  write RFID and update firmware.
 - `Niimbot.printer` → detected `{ modelId, protocolVersion, label, task, dpi }` (or
   `null` before connecting). Used to tell a B1 from a B1 Pro (same BLE name).
 - `Niimbot.getStatus()` → consumable status of an **already connected** printer (it
@@ -226,6 +283,15 @@ The image must be exactly `w_px × h_px`. The driver thresholds it to 1-bit
 - `Niimbot.PACE_MS` — gap (ms) between unacked writes (default 10). **macOS** drops
   unacked write bursts, so there the driver paces every model; lower this only if your
   printer tolerates a smaller gap.
+  This is the single biggest term in how long a print takes: **upload time is
+  `PACE_MS × writes`** and nothing else. Measured on a B1 Pro with `T40x60` (472 × 709),
+  the same label two minutes apart — realistic artwork 142 writes, 1.7 s of upload, 4.4 s
+  end to end; the demo's stress artwork 589 writes (its diagonals defeat run-length, one
+  packet per row), 6.8 s and 8.6 s. If you lower it, **verify on paper**: a too-small gap
+  drops rows silently and the label comes out short while progress reports 100%.
+- `Niimbot.PAGE_WAIT_MS` — how long a page may go unconfirmed before the job rejects
+  (default 25 000). Lower it in tests; leave it alone in production, since a slow first
+  page on a cold printer is normal.
 - `Niimbot.WRITE_MODE` — override the write path the driver detected: `null` (default,
   auto) · `"fast"` (unacked, no gap) · `"paced"` (unacked + `PACE_MS`) · `"acked"`
   (write-with-response). Any other value **throws** rather than being ignored. It is read
@@ -266,7 +332,7 @@ rather than a blanket claim:
   polyfill covers everything the driver needs: `namePrefix` filters, GATT,
   notifications and `writeValueWithoutResponse`.
 - **iOS needs the pacing — measured on paper, 2026-08-13.** `IS_MAC`
-  (`src/niimbot.js:107`) falls back to matching `/Mac/i` against the user agent, and
+  (`src/niimbot.js:150`) falls back to matching `/Mac/i` against the user agent, and
   **every iOS user agent contains `"like Mac OS X"`** — so `IS_MAC` is **`true` on an
   iPhone** (the connect line on the iPhone reads `mac=true`). That was an accident of
   implementation rather than a decision, so the unpaced path had never run on iOS and
@@ -290,7 +356,7 @@ rather than a blanket claim:
   the default pacing (correct) have been tried; nothing brackets the boundary between
   them. The short pause between labels on the iPhone is `PACE_MS`, not BLE throughput.
 - **Not tried: B1 and M2-H on iOS.** These are the models that bundle frames
-  (`BUNDLE_MAX = 240`, `src/niimbot.js:144`), and CoreBluetooth commonly caps an
+  (`BUNDLE_MAX = 240`, `src/niimbot.js:240`), and CoreBluetooth commonly caps an
   unacked write near 182 bytes — an oversized write can be truncated silently.
   If a page comes out incomplete on those, try `Niimbot.BUNDLE_MAX = 180`.
 
@@ -303,10 +369,32 @@ Serve the repo over localhost and open the demo (Web Bluetooth needs HTTPS or
 node demo/serve.mjs          # then open http://localhost:8080/demo/index.html
 ```
 
-The demo has a **Model** dropdown (B1 / B1 Pro) and a **Label** dropdown that only
-offers sizes matching the selected model's dpi — mirroring the selection rules above.
-Buttons cover a single label, 3 identical copies (one upload), a 3-label batch
-(distinct), and dense stress tests. **Read status** calls `Niimbot.getStatus()` on an
+The demo has a **Model** dropdown (all four validated printers), a **Label** dropdown that
+only offers sizes matching the selected model's dpi — mirroring the selection rules above
+— and a **Density** picker (1–5) that starts at the model's default and resets when the
+model changes, because a heat value chosen for one printer means nothing on another.
+The driver version actually loaded is shown as a badge next to the title: a tab left open
+across a deploy keeps running the code it loaded, and that failure is silent — it once
+dropped a brand-new option and printed five identical labels.
+
+Buttons cover a single label, a **realistic label**, 3 identical copies (one upload),
+3- and 5-label batches (distinct), and dense stress tests. The realistic one is worth
+knowing about: it draws what people actually print — frame, heading, data lines, a
+barcode band — where each band is a run of identical rows that run-length compresses. The
+stress label's corner-to-corner diagonals defeat that entirely, and the gap is not small.
+Measured on a B1 Pro with `T40x60`, same label two minutes apart:
+
+| artwork | row writes | upload | end to end |
+|---|---|---|---|
+| realistic | 142 | 1.7 s | **4.4 s** |
+| stress (diagonals) | 589 | 6.8 s | 8.6 s |
+
+Upload cost is `PACE_MS × writes` and nothing else, so **any timing you quote about this
+driver is meaningless without saying which artwork produced it**. Note also that the
+printer starts printing while data still arrives — it was already 36 % done when the
+stress upload ended — so you cannot get the print time by subtracting the upload.
+
+**Read status** calls `Niimbot.getStatus()` on an
 already-connected printer and hex-dumps the raw heartbeat/RFID bytes into the log
 panel — capturing those next to what the printer physically shows (lid, paper, tag) is
 exactly how the confirmed fields got confirmed, and how the rest still can be.
@@ -421,6 +509,9 @@ no app:
 | **`Niimbot.isSupported()` is false** | Firefox (no Web Bluetooth anywhere), Safari (see the iPhone row), an in-app WebView, or you're not on HTTPS/localhost. |
 | **iPhone: the connect button does nothing / not supported** | Safari has no Web Bluetooth. Open the page in **Bluefy** instead — validated on the B1 Pro (see *Requirements*). |
 | **Android: the device chooser opens with no printers** | Location services must be on, not just Bluetooth — Android gates BLE scanning behind location. It is not a pairing problem. |
+| **The chooser is empty for a printer the registry doesn't know** | Connect with a model that has **no `name_prefixes`** — that opens the chooser to everything, which is how a new model gets found in the first place. Do not filter by the service UUID: these printers do not advertise it, so that filter finds nothing at all (measured on a D11 *and* on a B1 Pro). |
+| **A new option seems to do nothing (density ignored, a new size missing)** | The tab is running an older driver. A page keeps the code it loaded, and that failure is completely silent. Check `Niimbot.VERSION` in the console — or the version badge next to the demo's title — and hard-reload before investigating anything else. This already cost one wrong hardware conclusion. |
+| **A print takes far longer than expected** | Count the writes, not the pixels: upload time is `PACE_MS × writes`. Content with diagonals or noise defeats run-length and costs ~one packet per row; a realistic label is a fraction of that. On a 40×60 the same label was 4.4 s realistic and 8.6 s as the stress pattern. |
 | **Nothing prints, no error** | Open the console and set `Niimbot.DEBUG = true` to see the BLE packets + per-batch timing trace, then check where it stalls. |
 
 ## Credits

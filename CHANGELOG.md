@@ -5,6 +5,44 @@ All notable changes to this project are documented here. The format is based on
 [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
+### Fixed
+- **The repo's front page had been announcing v1.3.5 since 7 June**, through four
+  releases. Pushing a tag published to npm and created no GitHub Release, and the README's
+  `github/v/release` badge reads the Releases page — so the shop window said 1.3.5 while
+  npm served 2.2.0. Half a trigger fails in the worst way available: nothing errors, the
+  artefact simply never appears. The workflow now creates the Release in the same step
+  that publishes, with notes taken from this file's section for that exact version, and
+  **fails rather than shipping an empty release** if the section is missing — a release
+  that says nothing is worse than a missing one, because it looks like the version did
+  nothing. Releases for v1.4.0, v2.0.0, v2.1.0 and v2.2.0 were backfilled.
+- **README audit — every claim checked against the code, not against the old text.**
+  What was wrong:
+  - *"The image must be exactly `w_px × h_px`."* It must not: `drawImage` scales the
+    source to the label (`src/niimbot.js:718`), so a differently sized image is
+    **stretched with no regard for aspect ratio**. Someone following that line would
+    resize needlessly; someone not following it would be surprised. Now stated, along
+    with the alpha rule (a pixel under alpha 33 prints white), which was undocumented.
+  - **The Quick start could not run.** It used top-level `await` inside a plain
+    `<script>`, which is a syntax error — the whole example dies before the first call.
+  - **Two code pointers aimed at nothing**: `IS_MAC` had moved from line 107 to 150 and
+    `BUNDLE_MAX` from 144 to 240. A pointer that lands on a blank line is worse than
+    none — it makes the reader doubt their file, not the doc.
+  - **The D11_H was missing** from the supported table, from the validated model ids
+    (only B1 and B1 Pro were listed, though the M2-H had been validated for a day) and
+    from the protocol-family line — which also claimed the *D11* is `v4` while the table
+    below listed it under `b1`, a contradiction with itself.
+  - **A TODO asked for a demo GIF that has existed since June**, and told the reader the
+    image above it was a broken link. It was not.
+  - **No list of the label sizes that ship.** Seven exist; the README mentioned five in
+    passing and `T25x38` nowhere. There is now a table, plus the two conventions that
+    surprise people: cable-flag `h_px` covers the flag and not the tail, and `T15x30`'s
+    width is the printhead rather than the label.
+  - **The Contents table omitted `label-memory.js` and `label-size.js`**, which do ship,
+    and said nothing about which paths reach npm at all.
+  - Missing API entries: `probe`, `connect`/`disconnect`, `PAGE_WAIT_MS`.
+  - Three new Troubleshooting rows for failures that cost real time this week: an empty
+    chooser for an unknown printer, a stale tab silently ignoring a new option, and a
+    print that is slow because of what is drawn on it.
 
 ## [2.2.0] - 2026-08-14
 ### Added
