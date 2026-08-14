@@ -1,19 +1,17 @@
 # Continuation notes — Niimbot B1 work
 
-> Working copy of the session memory, kept in-repo so it travels across machines.
-> Merged to **main**; latest release **v1.4.0** (mobile: iPhone via Bluefy validated on the
-> B1 Pro, Android natively; `FORCE_PACING`; demo log panel; `getStatus()` with an
-> **unvalidated** decode — see `CHANGELOG.md`).
-> **Unreleased since 1.4.0:** the `getStatus()` decode is grounded in real B1 Pro
-> captures — lid/paper/tag/usedPaper/capacity confirmed (model 4097 only, per-field
-> `decoded.evidence`), `ribbonInserted` removed as wrong, `allPaper` → `printLimit`.
-> Plus `Niimbot.WRITE_MODE` (auto/fast/paced/acked, both directions — `FORCE_PACING` is
-> now an alias) and an always-visible connect line, because `IS_MAC` is **true on an
-> iPhone** and iOS has therefore only ever printed paced.
-> **M2-H validated** (id 4608, 300 dpi, b1 task + fast writes). The only residual
-> slowness is a full random-noise page at 300 dpi (BLE throughput, MTU ≈ 247 → ~2
-> frames/write) — not a real-label case. v4 sequence was tested on M2-H, no better.
-> Still pending (Vikunja #56): D110, D11_H.
+> ⚠️ **This file is history, and it decays.** Everything below the header was written
+> during the June 2026 B1 bring-up and is kept because the *reasoning* is still useful —
+> why the B1 needs the handshake, why bundling exists, what the slowness turned out to be.
+> **Do not read it as current state.** Current state lives in the files that are maintained:
+> `CHANGELOG.md` (what shipped), `docs/TASKS.md` (what is queued), `docs/NOTES.md` (what was
+> measured), `registry.json` and `MODEL_IDS` in `src/niimbot.js` (what the hardware is).
+>
+> The header that used to sit here claimed "latest release v1.4.0" long after 2.2.0 shipped,
+> and listed the D110 and D11_H as pending after both were validated — a version number and
+> a to-do list are exactly the things that rot fastest, so they are gone rather than
+> restated. If you find yourself wanting to update this file with today's status, that is
+> the signal it should be **deleted**, not refreshed.
 
 ## Status (2026-06-07) — B1 complete, validated on real hardware
 

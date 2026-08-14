@@ -26,6 +26,7 @@ node test/status.test.js        # getStatus() decode harness (no printer)
 node test/unconfirmed.test.js   # a job the printer never confirmed must reject (no printer)
 node test/label-memory.test.js  # barcode→record storage (no printer, no browser)
 node test/label-size.test.js    # mm→px geometry (no printer, no browser)
+node test/one-page-per-job.test.js  # pagesPerJob split (D110) + B1 Pro regression (no printer)
 ```
 
 The demo's inline `<script>` cannot be checked by `node --check`. To parse it, extract
@@ -62,9 +63,11 @@ in `docs/TASKS.md`.
   dependency.
 - **No build step.** `src/niimbot.js` ships verbatim and loads via `<script>`,
   attaching `window.Niimbot`. Keep it one browser-global IIFE.
-- **Per-model, not per-task.** Flow-control and bundling behaviour hang off
-  `MODEL_IDS` (`src/niimbot.js:208-211`). Assuming a whole task family behaves alike
-  is exactly what broke the B1 Pro in v1.3.3.
+- **Per-model, not per-task.** Flow-control and bundling behaviour hang off the
+  `MODEL_IDS` table (`src/niimbot.js:304` — grep the name, the line moves). Assuming a
+  whole task family behaves alike is exactly what broke the B1 Pro in v1.3.3, and it
+  cost a second time on 2026-08-14: the D110 speaks the same `b1` sequence as the B1 and
+  the M2-H, and still prints only the first page of a multi-page job (`pagesPerJob`).
 - **Comments are documentation and rot like it.** The header block at
   `src/niimbot.js:1-21` had already drifted from the code once (two false claims,
   corrected in T-001). If a change makes a comment false, fix it in the same commit

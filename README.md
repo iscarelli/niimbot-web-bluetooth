@@ -202,10 +202,27 @@ connecting — if the model's `task`/`dpi` does not match the printer that answe
 - `Niimbot.printImage(url, { model, size, copies, density, offsetY, onProgress })` — print
   one image. **`copies`** (default 1) prints N identical labels from a **single** upload
   (the printer repeats the image internally) — far faster than re-sending it.
-  **`offsetY`** overrides `size.offset_y_px` to nudge the print down (px, feed axis).
+  **`offsetY`** overrides `size.offset_y_px` to shift the print along the feed axis, in px:
+  **positive moves it down** (the top `offsetY` rows come out blank and the bottom ones fall
+  off the page), **negative moves it up** (the top of your image is cut instead). Both
+  directions exist in shipped sizes, because printers err both ways — `T50x30_b1` is `+4`
+  and `T15x50` is `-2`.
 - `Niimbot.printBatch([url1, url2, …], { model, size, density, onProgress })` — N
   *distinct* labels in one continuous job (one upload each, streamed back-to-back, no
   retract).
+
+> **Exception, and it is automatic — the D110 prints one page per job.** It acks
+> `copies=N` and a multi-page job exactly like the others and then prints only the first
+> label, so the driver splits both calls above into **N complete jobs** for that model
+> (`pagesPerJob` in `MODEL_IDS`). Nothing changes for callers — ask for 3 copies, get 3
+> labels — but the promises in the two bullets do not hold there: **the upload is paid per
+> label instead of once**, and the paper feeds out and retracts between them. Measured on a
+> 264-row image: 3 copies took **18 s**, of which ~3.2 s is one upload — so roughly 6 s a
+> label, against the ~10 s the whole job would cost if `copies` worked. Light labels barely
+> notice (a 14-row image runs ~3 s a label, which is print time you pay anyway); the cost
+> lands on image-heavy ones. The driver logs one line saying so when it splits.
+> This is why flow control lives per **model** and not per protocol family: the D110
+> speaks the same `b1` sequence as the B1 and the M2-H, which do pipeline pages fine.
 - **`density`** (1–5, the scale the official NIIMBOT app uses) — print heat, per print,
   overriding the model's default from `registry.json`. Validated **before the printer is
   touched**: an out-of-range value throws and nothing is written, because this is the one

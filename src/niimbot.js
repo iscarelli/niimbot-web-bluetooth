@@ -300,7 +300,9 @@
   // `paced` = needs the ~10 ms gap between unacked row writes (the 203 dpi B1 drops
   // rows on a full-speed burst). `bundle` = tolerates several row frames per BLE write
   // (frame bundling) — only enabled where validated; the B1 Pro garbles/stalls on
-  // bundled writes, so it stays one-frame-per-write. Both are per-MODEL, not per-task.
+  // bundled writes, so it stays one-frame-per-write. `pagesPerJob` = caps how many
+  // pages/copies a single job actually prints on this model (the D110 acks N but only
+  // prints 1, see below). All three are per-MODEL, not per-task.
   const MODEL_IDS = {
     4096: { label: "Niimbot B1",     task: "b1", dpi: 203, paced: true,  bundle: true },
     4097: { label: "Niimbot B1 Pro", task: "v4", dpi: 300, paced: false, bundle: false },
@@ -324,7 +326,14 @@
     // counter (0xd3) reached 590 of 591, so nothing was dropped — unpaced was never
     // tried on this model. `bundle: false` is the conservative default, never measured
     // here — same standing as the D11_H entry.
-    2304: { label: "Niimbot D110",   task: "b1", dpi: 203, paced: true,  bundle: false },
+    // pagesPerJob: 1 — measured 2026-08-14. The D110 acks PrintStart pages=N and
+    // SetPageSize copies=N exactly like any other b1-task model, but only actually
+    // PRINTS the first page: a 3-copy upload prints ONE label and the page counter
+    // parks at page 1 until PAGE_WAIT_MS gives up; a 3-page batch is refused mid-stream
+    // with an undocumented `0xdb 06`. Three SEPARATE jobs print all three, clean. This
+    // is per-MODEL, not per-task — do not add the field to another b1-task model
+    // without measuring it broken the same way.
+    2304: { label: "Niimbot D110",   task: "b1", dpi: 203, paced: true,  bundle: false, pagesPerJob: 1 },
   };
   let printerInfo = null;   // { modelId, protocolVersion, label, task, dpi } after connect
 
@@ -730,7 +739,7 @@
     const ctx = canvas.getContext("2d");
     ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, w, h);
     ctx.drawImage(bmp, 0, dy, w, h);   // dy > 0 (e.g. T50x30_b1: +4): top dy rows stay white, bottom dy rows fall off the page.
-                                       // dy < 0 (e.g. T15x50: -6): top |dy| rows of the SOURCE image are cut off, bottom |dy| rows of the page stay white.
+                                       // dy < 0 (e.g. T15x50: -2): top |dy| rows of the SOURCE image are cut off, bottom |dy| rows of the page stay white.
                                        // Both directions are real hardware, not hypothetical: the B1 needed the print pushed down, the D110 needed it pulled up.
     const px = ctx.getImageData(0, 0, w, h).data;
     const stride = (w + 7) >> 3;
@@ -803,6 +812,14 @@
   //         the printhead waiting for the next page, and the lone PrintEnd at the end
   //         feeds it out — so a batch prints continuously, no retract between labels.
   function isB1(model) { return model && model.task === "b1"; }
+
+  // The connected, IDENTIFIED printer's MODEL_IDS entry, or null when unidentified —
+  // used to gate `pagesPerJob` (and anything else that must key off the ACTUAL printer
+  // rather than the caller's selection, which can be wrong). Mirrors the same lookup
+  // already used for flow control in connect() / warnOverrideVsModel().
+  function connectedMeta() {
+    return (printerInfo && printerInfo.modelId != null) ? MODEL_IDS[printerInfo.modelId] : null;
+  }
 
   // Print density, 1–5, the same scale the official NIIMBOT app exposes. It is a real
   // print parameter — the same label wants more heat on some stock than on others — so
@@ -938,6 +955,33 @@
     const offsetY = opts.offsetY != null ? opts.offsetY : (size.offset_y_px || 0);
     const { buf, stride } = await imageToPacked(url, size.w_px, size.h_px, offsetY);
     _t0 = Date.now(); _lastPage = -1;                                        // timing trace (DEBUG)
+
+    // pagesPerJob: 1 — this printer acks a multi-page/multi-copy job but only actually
+    // prints the first page (see MODEL_IDS `2304` comment). Fall back to N separate
+    // complete jobs instead. NOT gated behind DEBUG: the caller asked for one upload and
+    // is about to wait N× as long for it, with the image crossing BLE N times instead of
+    // once — silence here would just look like a slow print.
+    const meta = connectedMeta();
+    if (meta && meta.pagesPerJob === 1 && copies > 1) {
+      logAlways(`⚠ ${meta.label} only prints page 1 of a multi-page job (measured 2026-08-14) — printing ${copies} copies as ${copies} separate jobs; the image crosses BLE ${copies} times.`);
+      for (let i = 0; i < copies; i++) {
+        const tag = `copy ${i + 1}/${copies}`;
+        _lastPage = -1; _pageSeen = null;   // the printer's page counter resets at the start of EACH job (measured) — don't carry a stale value into the next one
+        await beginJob(model, 1, (s) => onProgress && onProgress(`${tag}: ${s}`), density);
+        tlog(`${tag}: job started (${size.w_px}×${size.h_px}, stride ${stride})`);
+        const acked = await sendPagePacked(model, size, buf, stride, 1, (s) => onProgress && onProgress(`${tag}: ${s}`));
+        tlog(acked ? `${tag}: image buffered (PageEnd acked)` : `${tag}: image sent but PageEnd went UNACKED`);
+        if (!acked) {
+          await endJob();                     // feed the paper out before failing (see finishJob)
+          throw unconfirmed(`the printer never acknowledged PageEnd for ${tag}`);
+        }
+        await finishJob(model, 1, (s) => onProgress && onProgress(`${tag}: ${s}`));
+      }
+      tlog(`done (${copies} separate jobs, PrintEnd acked each)`);
+      onProgress && onProgress("ok");
+      return;
+    }
+
     await beginJob(model, copies, onProgress, density);
     tlog(`job started (${copies} cop${copies > 1 ? "ies" : "y"}, ${size.w_px}×${size.h_px}, stride ${stride})`);
     const acked = await sendPagePacked(model, size, buf, stride, copies, onProgress);
@@ -970,6 +1014,34 @@
     const N = urls.length;
     const offsetY = opts.offsetY != null ? opts.offsetY : (size.offset_y_px || 0);
     _t0 = Date.now(); _lastPage = -1;                                       // reset timing trace
+
+    // pagesPerJob: 1 — see printImage for the same guard. A multi-page batch job on
+    // this printer would ack every command and print only the first label, so run N
+    // separate complete jobs instead: connect → job → job → … Semantics for the
+    // caller are unchanged (N urls in ⇒ N labels out); only the wire behavior differs.
+    const meta = connectedMeta();
+    if (meta && meta.pagesPerJob === 1 && N > 1) {
+      logAlways(`⚠ ${meta.label} only prints page 1 of a multi-page job (measured 2026-08-14) — sending ${N} labels as ${N} separate jobs; the image crosses BLE ${N} times.`);
+      for (let i = 0; i < N; i++) {
+        const tag = `label ${i + 1}/${N}`;
+        onProgress && onProgress(`${tag}: sending…`);
+        const { buf, stride } = await imageToPacked(urls[i], size.w_px, size.h_px, offsetY);
+        tlog(`${tag}: start sending`);
+        _lastPage = -1; _pageSeen = null;   // the printer's page counter resets at the start of EACH job (measured) — don't carry a stale value into the next one
+        await beginJob(model, 1, (s) => onProgress && onProgress(`${tag}: ${s}`), density);
+        const acked = await sendPagePacked(model, size, buf, stride, 1, (s) => onProgress && onProgress(`${tag}: ${s}`));
+        tlog(acked ? `${tag}: buffered (PageEnd acked)` : `${tag}: sent but PageEnd went UNACKED`);
+        if (!acked) {
+          await endJob();                   // feed the paper out before failing (see finishJob)
+          throw unconfirmed(`page ${i + 1} of ${N} was never acknowledged (no PageEnd ack)`);
+        }
+        await finishJob(model, 1, (s) => onProgress && onProgress(`${tag}: ${s}`));
+      }
+      tlog(`done (${N} separate jobs, PrintEnd acked each)`);
+      onProgress && onProgress("ok");
+      return;
+    }
+
     // Single job for the whole batch (both tasks): pages stream back-to-back, no
     // retract between. The B1 (protocol 3) supports this natively — printStart7b
     // with totalPages>1 parks the paper at the printhead after each PageEnd and only

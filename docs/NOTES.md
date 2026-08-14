@@ -617,12 +617,22 @@ radio. Nothing reads it yet; the driver files it into `lastUnsolicited` and drop
 Whether the other models emit it has not been checked — the B1 Pro captures predate anyone
 looking for it.
 
-**`0xDB` is a rejection.** Driving the D110 with the `v4` task, `0xdb 06` arrived twice:
-immediately after the 13-byte `SetPageSize` (which never got its `0x14`) and again after
-`PageEnd` (never got its `0xe4`). Under the `b1` task it never appeared and every command
-acked. So `0xdb` is the printer refusing a command, `06` presumably the reason — the code
-is not decoded. Worth knowing because the refusal is otherwise invisible: the driver just
-times out and reports "no response".
+**`0xDB` is a rejection — "busy", not "wrong task".** First seen driving the D110 as `v4`,
+where `0xdb 06` arrived twice: after the 13-byte `SetPageSize` (which never got its `0x14`)
+and after `PageEnd` (never got its `0xe4`).
+
+**An earlier version of this note said it never appears under the `b1` task. That was
+wrong, and it was written from a single-label capture.** A 3-label batch on the `b1` task
+(2026-08-14, 11:02) produced `0xdb 06` twice more — and there the task was never in
+question, because the same connection had just printed a single label cleanly. What the
+batch adds is the tell: the rejection lands on whichever command arrives after the printer
+considers the job over (`SetPageSize` on page 1, `PageEnd` on page 2 — see *D110: every
+multi-label path fails*, below).
+
+So `0xdb` is the printer refusing a command it cannot service right now; `06` is presumably
+the reason and is not decoded. Worth knowing because the refusal is otherwise invisible —
+the driver files it into `lastUnsolicited`, drops it, and reports a timeout instead of the
+"no" it was actually given.
 
 **`0xA5` answers with 2 bytes on this model, so protocol detection yields `null`.**
 `detectPrinter` (`src/niimbot.js:321`) requires ≥ 13 bytes of `PrinterStatusData` to derive
@@ -642,3 +652,107 @@ reports its own printhead width*, above) should report the D110's head directly.
 in `registry.json` was inferred instead — 120 px sent, clipped at 12 mm measured. Running
 the probe would give a second, independent source for the same number, and it needs no
 labels.
+
+## D110: every multi-label path fails — one page per job (2026-08-14, open)
+
+A **single** label prints clean on the D110 (`96×400`, page 1 / 100 % / 100 %) and is
+confirmed on paper. **Both** multi-label paths fail, and they fail differently.
+
+### `copies` is not honoured
+
+`Print 3 copies (1 upload)` — the path where the bitmap crosses BLE once and the printer
+repeats it internally. Everything was accepted:
+
+    01 (7b) 00 03 …          PrintStart, pages = 3        -> 02 ✔
+    13 (6b) 01 90 00 60 00 03  SetPageSize, copies = 3    -> 14 ✔
+    …one image…  e3          PageEnd                      -> e4 ✔
+
+**One label came out.** The counter reached `00 01 64 64` — page 1, print 100 %, feed 100 %
+— and then sat there, unchanged, for the full `PAGE_WAIT_MS` (25 s, ~100 polls), before the
+job was declared unconfirmed at "page 1 of 3". The printer acked a request for three copies
+and delivered one.
+
+### The 3-label batch is rejected mid-job
+
+| page | PageStart `0x03` | SetPageSize `0x13` | PageEnd `0xE3` |
+| --- | --- | --- | --- |
+| 0 | `04 01` | `14` ✔ | `e4` ✔ |
+| 1 | **`04 00`** | **`db 06`** (no `14`) | `e4` ✔ |
+| 2 | `04 01` | `14` ✔ | **`db 06`** (no `e4`) |
+
+### A hypothesis was tested here and REFUTED — recorded because the wrong turn is the useful part
+
+The batch table alone looked like a flow-control problem, and the first explanation written
+here was that `LOOKAHEAD = 2` (`src/niimbot.js:961`) pushes all three pages back to back —
+which it does: in a 3-page batch the guard `i - LOOKAHEAD >= 0` never fires, and page 1
+started 3 ms after page 0 was buffered.
+
+**The `copies` capture kills that explanation.** That path pipelines *nothing* — one upload,
+one PageEnd, then pure waiting — and it still produced one label instead of three. There is
+no send to lose a race, so timing cannot be the cause there. An explanation that covers one
+capture and not the other is not the cause of either.
+
+**What covers both: the D110 does one page per job.** `PrintStart pages=N` and
+`SetPageSize copies=N` are both accepted and both ignored; the printer prints the first page
+and considers the job finished. That is why the counter parks at 1, and why page 1's
+PageStart answers `04 00` — the job is over, and what follows is refused with `0xdb`.
+
+**CONFIRMED the same day.** Three single-label prints, three separate jobs, same connection:
+three labels, each clean, each ~3.2 s, each with its own counter climbing 0 → 1
+(`00 00 02 00` on the first poll of every job — so the counter **resets per job**, which the
+fix depends on). Immediately after, the same tab ran `copies=3` again and again produced one
+label. Multi-label on this printer means **N jobs, not one job of N pages** — a per-model
+fact, now `pagesPerJob: 1` in `MODEL_IDS` (T-008).
+
+The cost is inherent, not a choice: N jobs means the paper feeds out and retracts between
+labels, so the "single job, pages pipelined, no retract between labels" behaviour that the
+B1 Pro and M2-H get does not apply here. Slower, and correct. Measured on the D110: **~6 s
+per label** through the split path against **~3 s** for a lone one, the difference being a
+full job teardown and setup each time.
+
+Independent confirmation that the labels were real, not just acked: the RFID `usedPaper`
+counter went **59 → 62 → 65** across the two 3-label runs. That is the printer counting
+consumed labels, on a different code path from the page counter the driver polls.
+
+## Calibrating a print offset: print the parameter ON the label
+
+The D110's `offset_y_px` was first derived arithmetically and it was **wrong**, in a way
+worth keeping because the mistake is the ordinary one.
+
+A ruler on a mis-registered print showed ~0.8 mm of blank above the content. At 203 dpi that
+is 6.4 px, so `offset_y_px: -6` went in. A sweep on paper then said **-2**.
+
+**What the arithmetic assumed and should not have:** that all 0.8 mm was *displacement*. The
+likely reading — untested, so stated as a hypothesis — is that part of it is **physically
+unprintable margin**: the head simply does not reach the first fraction of a millimetre of
+the label. If so, 0.25 mm of correction is all there is to win, and the white that remains
+has no software fix. Nobody has measured where the head actually starts reaching, so this
+stays a hypothesis.
+
+**The method that got the right answer, and generalises to any print-position parameter:**
+print one label per candidate value, **with the value itself drawn on the label**. Six
+labels came out reading `-2`, `-4`, `-6`, `-8`, `-10`, `-12`, and picking the good one was
+looking at a table rather than remembering an order. A sweep beats a conversion because it
+compares candidates against the physical edge instead of turning one measurement into a
+number; and self-labelling beats sequencing because an interrupted or reordered run does not
+poison the result.
+
+The target that made it readable: a bar flush against **row 0** and another against the
+**last row**, plus a frame inset 12 px. With a negative offset the top rows of the source are
+what get cut, so the top bar *thins* as the value grows more negative and *disappears* once
+it overshoots — an analogue readout of the very thing being tuned. The script lives in
+scratch, not in the repo: it is a measuring instrument for one afternoon, not an artefact to
+maintain.
+
+**Neither failure is silent, and that is the design working.** Both were reported as
+unconfirmed and threw; nothing claimed success. The disease of v1.3.3/v1.3.4 was a job that
+reported 100 % over a blank label. Here the driver said "page 1 of 3" and refused to call it
+done.
+
+### The second defect, independent of all of the above
+
+The driver asks PageStart a question and ignores the answer. `sendWait(0x03, [0x01], 0x04,
+1000)` matches on the response **opcode** only (`receive()`, `src/niimbot.js:117`), so
+`04 00` and `04 01` are indistinguishable to it. On page 1 the printer answered `00` and the
+driver sent SetPageSize anyway, straight into the refusal. Every `sendWait` in the driver has
+this blind spot; this is the first capture where a payload carried a "no".

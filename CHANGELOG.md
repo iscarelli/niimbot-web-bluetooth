@@ -6,31 +6,56 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 ### Added
-- **Niimbot D110 (model id 2304)** — the fifth validated printer. Printed end to end on
-  real hardware 2026-08-14 (printer counter reached page 1, print 100 %, feed 100 %).
-  `MODEL_IDS` gets a `2304` entry (`task: "b1"`, `dpi: 203`, `paced: true`,
-  `bundle: false`); `registry.json` gets a `d110` model and a `T15x50` size. `task: "b1"`
-  is measured, not assumed: driven as `v4` the printer acked SetDensity, SetLabelType,
-  PrintStart and PrintStatus, then went silent on the two v4-specific commands
-  (SetPageSize 13-byte, PageEnd); driven as `b1` every command acked and the page
-  printed. `dpi: 203` is measured (591 rows ≈ 73 mm). `T15x50`'s `w_px` (96) is the
-  printhead, not the label — 15 mm at 203 dpi is 120 px, and the print came out clipped
-  at 12 mm (96 px). **Hardware confirmation that a print actually sent at 96 px comes out
-  correctly is still outstanding** — the 96 was inferred from a print sent at 120 that
-  came back clipped.
+- **Niimbot D110 (model id 2304)** — the fifth printer validated on real hardware
+  (2026-08-14), and the first 203 dpi one since the B1. `MODEL_IDS` gets a `2304` entry
+  (`task: "b1"`, `dpi: 203`, `paced: true`, `bundle: false`); `registry.json` gets a
+  `d110` model and a `T15x50` size (96 × 400, `offset_y_px: -2`).
+  `task: "b1"` is measured, not assumed: driven as `v4` the printer acked SetDensity,
+  SetLabelType, PrintStart and PrintStatus, then went silent on the two v4-specific
+  commands (SetPageSize 13-byte, PageEnd); driven as `b1` every command acked and the
+  page printed. `dpi: 203` is measured — 591 rows came out ≈ 73 mm. `T15x50`'s `w_px`
+  (96) is the **printhead, not the label**: 15 mm at 203 dpi is 120 px, 120 px was sent
+  and the print came back clipped at 12 mm, so a 15 mm label keeps ~1.5 mm unprinted on
+  each side and that is the printer, not a choice. **Confirmed on paper**: prints sent at
+  96 px come out with the right edge intact, single labels and multi-label runs alike.
+  Note for anyone reading `MODEL_IDS`: `paced: true` is the mode that *worked* (the
+  printer's own `0xd3` row counter reached 590 of 591, so nothing was dropped), not a
+  proven requirement — unpaced was never tried on this model; `bundle: false` is the
+  conservative default and was never measured.
 ### Fixed
-- **D110 (`T15x50`) printed ~0.8 mm low** — a blank strip at the top of the label and the
-  same amount of content lost off the bottom (measured 2026-08-14 on paper). `T15x50` now
-  carries `offset_y_px: -6` in `registry.json` (0.8 mm × 8 px/mm ≈ 6.4 px, rounded to the
-  nearer whole row). This is a paper-registration correction, not a scale fix — `h_px`
-  stays 400 because the label really is 50 mm. The mechanism already handled a negative
-  offset (`ctx.drawImage(bmp, 0, dy, w, h)` in `src/niimbot.js` accepts negative `dy`); it
-  had just never been *used* with one, so two comments describing only the positive case
-  were misleading and are now corrected to cover both directions (`T50x30_b1`'s `+4` pushes
-  down for the B1's opposite error; `T15x50`'s `-6` pulls up for the D110). Cost: pulling
-  the print up crops the top 6 rows of the source image. Confirmed from one ruler
-  measurement of one label — paper registration can vary label to label, so **hardware
-  reconfirmation on more D110 labels is still outstanding**.
+- **D110 (model id 2304) printed only 1 of N labels on both multi-label paths.**
+  `printImage(url, {copies:3})` printed one label and the page counter parked at page 1
+  until `PAGE_WAIT_MS` gave up; `printBatch([url, url, url])` was refused mid-stream with
+  an undocumented `0xdb 06` (measured 2026-08-14). The printer acks `PrintStart pages=N`
+  and `SetPageSize copies=N` same as any other `b1`-task model, then silently ignores
+  both and ends the job after the first page. Three separate jobs print all three,
+  clean. `MODEL_IDS[2304]` gets `pagesPerJob: 1`; when the connected, IDENTIFIED printer
+  has that flag, `printImage`/`printBatch` fall back to N complete jobs
+  (`beginJob`→`sendPagePacked`→`finishJob` per copy/page) instead of one job of N pages.
+  Public semantics are unchanged (N copies/urls in ⇒ N labels out); a job failure still
+  stops the loop and propagates rather than aggregating. No other model gets the field —
+  the B1 Pro (and everything else) is unaffected, verified by a regression assertion in
+  the new harness. The demo's `Print 3 copies (1 upload)` button gets a `title` noting
+  the exception on the D110. **Confirmed on paper 2026-08-14**: both paths now produce
+  three labels on a D110, and the printer's own RFID `usedPaper` counter — a different
+  code path from the page counter the driver polls — went 59 → 62 → 65 across the two
+  runs. The cost is inherent and is documented in the README: the upload is paid per
+  label instead of once, and the paper feeds out and retracts between labels.
+- **D110 (`T15x50`) printed low** — a blank strip at the top of the label and a matching
+  amount of content lost off the bottom. `T15x50` now carries `offset_y_px: -2` in
+  `registry.json`. This is a paper-registration correction, not a scale fix — `h_px` stays
+  400 because the label really is 50 mm. The value comes from a six-candidate sweep printed
+  on real hardware 2026-08-14: six labels, each carrying its own offset drawn on it (-2, -4,
+  -6, -8, -10, -12), compared directly against the label's physical edge, and -2 is the one
+  that came out right. The mechanism already handled a negative offset
+  (`ctx.drawImage(bmp, 0, dy, w, h)` in `src/niimbot.js` accepts negative `dy`); it had just
+  never been *used* with one, so two comments describing only the positive case were
+  misleading and are now corrected to cover both directions (`T50x30_b1`'s `+4` pushes down
+  for the B1's opposite error; `T15x50`'s `-2` pulls up for the D110). Cost: pulling the
+  print up crops the top 2 rows (0.25 mm) of the source image. The likely explanation for
+  why so little correction is needed — NOT confirmed — is that most of the visible blank
+  strip is physical non-printable margin, not print offset; nobody has measured where the
+  printhead actually starts reaching the label.
 - **The repo's front page had been announcing v1.3.5 since 7 June**, through four
   releases. Pushing a tag published to npm and created no GitHub Release, and the README's
   `github/v/release` badge reads the Releases page — so the shop window said 1.3.5 while

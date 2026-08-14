@@ -138,7 +138,7 @@
       "dpi": 300
     },
     "T15x50": {
-      "_note": "D110 15×50 mm @ 203 dpi. w_px is the PRINTHEAD (96), not the label: 15 mm at 203 dpi is 120 px; 120 px was sent and the print came out clipped at 12 mm total width (measured 2026-08-14), and 12 mm x 8 px/mm = 96, the only multiple of 8 within a millimetre of the reading (88 = 11 mm, 104 = 13 mm). So a 15 mm label keeps ~1.5 mm unprinted on each side, and that is the printer, not a choice. h_px = 400 is arithmetic from the confirmed 203 dpi (50 mm x 8), the same standing as T40x60's geometry. offset_y_px: -6 corrects PAPER REGISTRATION, not scale — h_px stays 400 because the label really is 50 mm. Measured 2026-08-14 on one printed label: 0.8 mm of blank at the top, the same 0.8 mm of content lost off the bottom. 0.8 mm x 8 px/mm = 6.4 px; 6 (0.75 mm) is the nearer whole row versus 7 (0.875 mm). Cost: pulling the print up by 6 rows crops the TOP 6 rows (0.75 mm) of the source image — content drawn flush against the top edge will be clipped. This is the first size to use a NEGATIVE offset_y_px; T50x30_b1 uses +4 (pushes down) for the opposite error on the B1, so both directions are confirmed on real hardware. Confirmed only from one ruler measurement of one label — paper registration can vary label to label, so treat -6 as a starting point, not a settled constant.",
+      "_note": "D110 15×50 mm @ 203 dpi. w_px is the PRINTHEAD (96), not the label: 15 mm at 203 dpi is 120 px; 120 px was sent and the print came out clipped at 12 mm total width (measured 2026-08-14), and 12 mm x 8 px/mm = 96, the only multiple of 8 within a millimetre of the reading (88 = 11 mm, 104 = 13 mm). So a 15 mm label keeps ~1.5 mm unprinted on each side, and that is the printer, not a choice. h_px = 400 is arithmetic from the confirmed 203 dpi (50 mm x 8), the same standing as T40x60's geometry. offset_y_px: -2 corrects PAPER REGISTRATION, not scale — h_px stays 400 because the label really is 50 mm. Measured 2026-08-14 by a six-candidate sweep printed on real hardware: six labels, each carrying its own offset drawn on it (-2, -4, -6, -8, -10, -12), compared directly against the label's physical edge — -2 is the one that came out right. This replaces an earlier single ruler reading that had indicated -6 and was wrong: that reading treated the ~0.8 mm of blank at the top as pure print offset, when a ruler comparing one label to one number can't separate offset from margin. The likely explanation, NOT confirmed — nobody has measured where the printhead actually starts reaching the label — is that part of that 0.8 mm is physical non-printable margin, not offset; correcting only 0.25 mm (the -2) leaves the rest as margin no software setting removes. Cost stands, just smaller: pulling the print up by 2 rows crops the TOP 2 rows (0.25 mm, was 0.75 mm at -6) of the source image — content drawn flush against the top edge will still be clipped. This is the first size to use a NEGATIVE offset_y_px; T50x30_b1 uses +4 (pushes down) for the opposite error on the B1, so both directions are confirmed on real hardware.",
       "label": "15 × 50 mm (D110)",
       "code": "T15*50",
       "w_mm": 15,
@@ -146,7 +146,7 @@
       "w_px": 96,
       "h_px": 400,
       "margin": 6,
-      "offset_y_px": -6,
+      "offset_y_px": -2,
       "dpi": 203
     }
   },
