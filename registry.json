@@ -23,6 +23,18 @@
       "speed": 1,
       "name_prefixes": ["B1"]
     },
+    "d11h": {
+      "_note": "Niimbot D11_H — model id 528, protocol 5, advertised name e.g. 'D11_H-H225012706'. Discovered and printed 2026-08-13: the v4 command sequence works (solid black printed on the first attempt). dpi 300 is inferred, not measured — a 15 mm label at 300 dpi is 177 px, and the printer accepted and printed W=177. NO SIZE ENTRY YET: the printable width is unresolved (docs/protocol-v4.md says 136 px, a byte in the dc[3] response reads 144, and the first print suggests neither). Do not add one until the black band has been measured with a ruler.",
+      "label": "Niimbot D11_H",
+      "id": 528,
+      "dpi": 300,
+      "protocol": "v4",
+      "task": "v4",
+      "density": 3,
+      "label_type": 1,
+      "speed": 1,
+      "name_prefixes": ["D11"]
+    },
     "m2h": {
       "_note": "Niimbot M2-H — 300 dpi, model id 4608, protocol v4, advertised name e.g. 'M2_H-H107060027'. Validated on hardware: identifies and prints (5-label batch and single labels, 2026-08-13). Uses the b1 command sequence (per niimbluelib) with frame bundling. w_px 567 is NOT the printhead width — an earlier note said so and it is wrong: solid black at 584 printed edge to edge on this printer (2026-08-13), so the head reaches at least 584. 567 is a deliberate ~1.4 mm right margin, because THIS MODEL USES A RIBBON (thermal transfer, unlike the direct-thermal B1 Pro) and the ribbon tends to drift slightly; the margin absorbs that. Keep it unless you are testing the head itself.",
       "label": "Niimbot M2-H",

@@ -15,6 +15,22 @@ All notable changes to this project are documented here. The format is based on
   `acceptAllDevices` — the path a printer the registry does not know yet actually needs.
 
 ### Added
+- **The D11_H is registered — model only, deliberately no size yet.** Found by open
+  discovery (it advertises `D11_H-…`), **model id 528, protocol 5**, and the `v4` command
+  sequence prints on it: solid black came out on the first attempt, which is what
+  `docs/protocol-v4.md` predicted and nobody had tried. Added to `registry.json` and to
+  `MODEL_IDS`, with `paced`/`bundle` left at the conservative defaults because neither
+  was measured.
+  **No size entry**, on purpose: the printable width is unresolved. The protocol doc says
+  136 px, a byte in the `dc[3]` response reads 144, and the first print agrees with
+  neither. Shipping a `w_px` now would repeat exactly the mistake this changelog spent
+  the day undoing — a plausible number with an invented justification.
+  Its status response is another new shape: `0xB3` is **8 bytes** here, against 11 on the
+  B1 Pro and 10 on the M2-H.
+- **`printLimit` confirmed on a third roll, and the best one yet.** The D11_H's tag reads
+  `printLimit` 252 with **no `capacity` field**, and the maintainer's roll holds **210**
+  labels — 252 / 210 = **1.2 exactly**, the same ratio seen on two earlier rolls. On
+  those, both numbers came from the tag; here the denominator came from outside it.
 - **`Niimbot.probe(cmd, data, timeoutMs)` — a diagnostic, not API.** Sends one command
   and returns whatever answers, accepting any response opcode. Added while hunting where
   the M2-H reports remaining ribbon: with a nearly-full ribbon and a half-spent one,

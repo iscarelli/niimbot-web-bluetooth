@@ -306,6 +306,11 @@
     4097: { label: "Niimbot B1 Pro", task: "v4", dpi: 300, paced: false, bundle: false },
     4098: { label: "Niimbot B1 SE",  task: "b1", dpi: 203, paced: true,  bundle: false },
     4608: { label: "Niimbot M2-H",   task: "b1", dpi: 300, paced: false, bundle: true },  // B1-Pro-class: b1 command sequence (per niimbluelib; v4 tested no better) + fast writes
+    // D11_H, discovered 2026-08-13 by open discovery (it advertises "D11_H-…", and
+    // reports protocol 5). The v4 sequence PRINTS on it — solid black came out on the
+    // first attempt — which is what the protocol doc predicted and nobody had tried.
+    // `paced`/`bundle` are the conservative defaults: neither has been measured here.
+    528:  { label: "Niimbot D11_H", task: "v4", dpi: 300, paced: false, bundle: false },
   };
   let printerInfo = null;   // { modelId, protocolVersion, label, task, dpi } after connect
 
