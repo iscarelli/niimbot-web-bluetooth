@@ -1,6 +1,6 @@
 {
   "name": "niimbot-web-bluetooth",
-  "version": "2.2.0",
+  "version": "2.3.0",
   "description": "Zero-dependency Web Bluetooth driver + reverse-engineered protocol docs to print Niimbot label printers straight from the browser — no app. Validated on B1, B1 Pro, M2-H and D11_H.",
   "main": "src/niimbot.js",
   "type": "commonjs",

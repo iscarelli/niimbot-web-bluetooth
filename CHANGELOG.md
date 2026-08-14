@@ -5,6 +5,8 @@ All notable changes to this project are documented here. The format is based on
 [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
+
+## [2.3.0] - 2026-08-14
 ### Added
 - **Niimbot D110 (model id 2304)** — the fifth printer validated on real hardware
   (2026-08-14), and the first 203 dpi one since the B1. `MODEL_IDS` gets a `2304` entry
@@ -595,7 +597,8 @@ All notable changes to this project are documented here. The format is based on
   (`v4`, 300 dpi), reverse-engineered protocol V4 documentation, and a standalone demo.
 - Multi-label batches print as one continuous job (no stop/retract between labels).
 
-[Unreleased]: https://github.com/iscarelli/niimbot-web-bluetooth/compare/v2.2.0...HEAD
+[Unreleased]: https://github.com/iscarelli/niimbot-web-bluetooth/compare/v2.3.0...HEAD
+[2.3.0]: https://github.com/iscarelli/niimbot-web-bluetooth/compare/v2.2.0...v2.3.0
 [2.2.0]: https://github.com/iscarelli/niimbot-web-bluetooth/compare/v2.1.0...v2.2.0
 [2.1.0]: https://github.com/iscarelli/niimbot-web-bluetooth/compare/v2.0.0...v2.1.0
 [2.0.0]: https://github.com/iscarelli/niimbot-web-bluetooth/compare/v1.4.0...v2.0.0
