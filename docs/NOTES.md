@@ -231,3 +231,30 @@ printer emitted sparse `0xD3` notifications during row streaming (`01 2b 01`,
 `01 61 01`, `00 95 01`); there it emitted **hundreds** of `0x14 (01 00)` — the
 SetPageSize ack, of which one per page would be expected — arriving seconds late. What
 that means is unknown.
+
+### The pause is write count × `PACE_MS`, and nothing else (measured pair)
+
+Same printer, same size, same mode, same batch length — only the content differs. The
+light run was printed to test a prediction made in advance (that the pause would shrink
+or vanish), so it could have falsified it.
+
+| | dense noise | light label |
+|---|---|---|
+| row-writes per page | 177–273 | **50** |
+| send time per page | 2.3–3.4 s | **~0.74 s** |
+| whole 5-page job | 16.4 s | **6.2 s** |
+| inter-label pause on paper | visible | **none** |
+
+Run-length collapses a 354-row light label into 50 writes. Subtracting the SetPageSize
+round trip (~110 ms) and PageEnd (~55 ms) leaves ~580 ms for 50 writes = **11.6 ms
+each**, against `PACE_MS = 10`. The send time is the pacing; the payload is negligible.
+
+**The bottleneck inverts, which is what removes the pause.** In the light run the driver
+finished sending page 4 at t+4.0 s while the printer had only completed page 2 at
+t+3.3 s, and then spent t+4.0→6.2 s polling — i.e. waiting for the printer. In the dense
+run the reverse held. A pause between labels means the driver is behind; nothing else.
+
+**Consequence:** the pause is not a property of `paced`, it is a property of
+writes-per-page. Reducing writes (frame bundling) attacks it directly; lowering
+`PACE_MS` attacks the safety margin instead. See the note above on `MODEL_IDS`, where
+bundling is off for the B1 Pro for want of testing.
