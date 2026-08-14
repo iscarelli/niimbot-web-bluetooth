@@ -46,6 +46,18 @@
       "label_type": 1,
       "speed": 1,
       "name_prefixes": ["M2"]
+    },
+    "d110": {
+      "_note": "Niimbot D110 — model id 2304 (also present in the driver's INVERTED_LID_MODELS list, so niimbluelib knows this id), advertised name e.g. 'D110-FC06023035'. Validated on hardware 2026-08-14: identifies and prints end to end (printer counter reached page 1, print 100%, feed 100%). protocol 'v4' is the FRAMING (0x55 0x55 ... 0xAA 0xAA), which worked, same as every other entry; task 'b1' is the command sequence — driven as v4 the printer went silent on SetPageSize 13-byte and PageEnd, driven as b1 every command acked and the page printed. density 3 / label_type 1 are the values that were accepted (0x31 and 0x33 acked), not values compared against alternatives.",
+      "label": "Niimbot D110",
+      "id": 2304,
+      "dpi": 203,
+      "protocol": "v4",
+      "task": "b1",
+      "density": 3,
+      "label_type": 1,
+      "speed": 1,
+      "name_prefixes": ["D110"]
     }
   },
   "sizes": {
@@ -124,6 +136,18 @@
       "h_px": 449,
       "margin": 10,
       "dpi": 300
+    },
+    "T15x50": {
+      "_note": "D110 15×50 mm @ 203 dpi. w_px is the PRINTHEAD (96), not the label: 15 mm at 203 dpi is 120 px; 120 px was sent and the print came out clipped at 12 mm total width (measured 2026-08-14), and 12 mm x 8 px/mm = 96, the only multiple of 8 within a millimetre of the reading (88 = 11 mm, 104 = 13 mm). So a 15 mm label keeps ~1.5 mm unprinted on each side, and that is the printer, not a choice. h_px = 400 is arithmetic from the confirmed 203 dpi (50 mm x 8), the same standing as T40x60's geometry. offset_y_px: -6 corrects PAPER REGISTRATION, not scale — h_px stays 400 because the label really is 50 mm. Measured 2026-08-14 on one printed label: 0.8 mm of blank at the top, the same 0.8 mm of content lost off the bottom. 0.8 mm x 8 px/mm = 6.4 px; 6 (0.75 mm) is the nearer whole row versus 7 (0.875 mm). Cost: pulling the print up by 6 rows crops the TOP 6 rows (0.75 mm) of the source image — content drawn flush against the top edge will be clipped. This is the first size to use a NEGATIVE offset_y_px; T50x30_b1 uses +4 (pushes down) for the opposite error on the B1, so both directions are confirmed on real hardware. Confirmed only from one ruler measurement of one label — paper registration can vary label to label, so treat -6 as a starting point, not a settled constant.",
+      "label": "15 × 50 mm (D110)",
+      "code": "T15*50",
+      "w_mm": 15,
+      "h_mm": 50,
+      "w_px": 96,
+      "h_px": 400,
+      "margin": 6,
+      "offset_y_px": -6,
+      "dpi": 203
     }
   },
   "default_model": "b1pro",

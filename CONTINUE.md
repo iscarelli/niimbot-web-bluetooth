@@ -31,8 +31,13 @@ on a task/dpi mismatch. `Niimbot.identify(model)` returns it without printing;
 the **detected** model, so an identify-then-print (or wrong pick) still arms a real B1.
 
 ## Next (tracked in Vikunja)
-- **Compatibilizar D110, D11_H e M2_H** — add these models (D110 = its own niimbluelib
-  print task; D11_H = `v4`/D110M_V4; M2_H = `b1`). Needs ids + task wiring + testing.
+- ~~**Compatibilizar D110, D11_H e M2_H**~~ — all three are validated on hardware now
+  (M2_H and D11_H on 2026-08-13, D110 on 2026-08-14). **This line used to say "D110 =
+  its own niimbluelib print task", and that was wrong**: the D110 (advertised
+  `D110-…`, model id **2304**, 203 dpi) prints with the **existing `b1` task**, proven
+  by a full job on paper — no new task was needed. Driven as `v4` it goes silent on
+  exactly the two v4-specific commands (SetPageSize 13-byte and PageEnd). Wiring
+  tracked as T-006 in `docs/TASKS.md`.
 - **Implementar status de material** — surface paper/label and RFID/consumable status
   (heartbeat `0xDC`→`0xD9` carries lid/paper flags; `RfidInfo 0x1A`→`0x1B`).
 

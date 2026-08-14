@@ -311,6 +311,20 @@
     // first attempt — which is what the protocol doc predicted and nobody had tried.
     // `paced`/`bundle` are the conservative defaults: neither has been measured here.
     528:  { label: "Niimbot D11_H", task: "v4", dpi: 300, paced: false, bundle: false },
+    // D110, model id 2304, printed end to end on hardware 2026-08-14 (advertised name
+    // "D110-FC06023035"). `task: "b1"` is MEASURED, not assumed. Driven as `v4` the
+    // printer acked SetDensity (0x21→0x31), SetLabelType (0x23→0x33), PrintStart 9b
+    // (0x01→0x02) and PrintStatus (0xa3→0xb3 = `00 00 00 00`), then went silent on
+    // exactly the two commands that are v4-specific: SetPageSize 13-byte (0x13, no
+    // 0x14) and PageEnd (0xe3, no 0xe4) — emitting an undocumented `0xdb` `06` at each.
+    // Driven as `b1` (PageStart 0x03→0x04, SetPageSize 6-byte 0x13→0x14) every command
+    // acked and the page printed. `dpi: 203` is MEASURED: 591 rows came out ≈ 73 mm →
+    // 8.1 px/mm (300 dpi would have been 50 mm). `paced: true` is the mode that WORKED,
+    // not a proven requirement: the b1 run wrote paced and the printer's own row
+    // counter (0xd3) reached 590 of 591, so nothing was dropped — unpaced was never
+    // tried on this model. `bundle: false` is the conservative default, never measured
+    // here — same standing as the D11_H entry.
+    2304: { label: "Niimbot D110",   task: "b1", dpi: 203, paced: true,  bundle: false },
   };
   let printerInfo = null;   // { modelId, protocolVersion, label, task, dpi } after connect
 
@@ -709,13 +723,15 @@
 
   // ── Bitmap: image → rows packed MSB-first (1 = black) ───────────────────────
   async function imageToPacked(url, w, h, offsetY) {
-    const dy = offsetY | 0;   // shift the print down by dy rows (print-position calibration)
+    const dy = offsetY | 0;   // print-position calibration (paper registration, not scale — w/h stay put); dy > 0 shifts down, dy < 0 shifts up
     const bmp = await fetch(url).then((r) => r.blob()).then((b) => createImageBitmap(b));
     const canvas = document.createElement("canvas");
     canvas.width = w; canvas.height = h;
     const ctx = canvas.getContext("2d");
     ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, w, h);
-    ctx.drawImage(bmp, 0, dy, w, h);   // top dy rows stay white; bottom dy rows fall off the page
+    ctx.drawImage(bmp, 0, dy, w, h);   // dy > 0 (e.g. T50x30_b1: +4): top dy rows stay white, bottom dy rows fall off the page.
+                                       // dy < 0 (e.g. T15x50: -6): top |dy| rows of the SOURCE image are cut off, bottom |dy| rows of the page stay white.
+                                       // Both directions are real hardware, not hypothetical: the B1 needed the print pushed down, the D110 needed it pulled up.
     const px = ctx.getImageData(0, 0, w, h).data;
     const stride = (w + 7) >> 3;
     const buf = new Uint8Array(stride * h);

@@ -595,3 +595,50 @@ heading.
 **Still unmeasured: what density does to the paper.** Two register-level and one timing-level
 confirmations say the printer honours it; nobody has yet compared two labels and named the
 difference.
+
+## D110 bring-up: four protocol behaviours nothing here had seen (2026-08-14)
+
+Model id **2304**, advertised `D110-FC06023035`, 203 dpi, `b1` task. All four below come
+from one capture on Windows/Chrome; none of them is decoded or documented anywhere else in
+this project.
+
+**`0xD3` is a row-received counter, and it is the thing this project has always wanted.**
+During the image upload the printer volunteered, unasked:
+
+    d3: 00 c7 01     ->  199
+    d3: 01 8f 01     ->  399
+    d3: 02 4e 01     ->  590
+
+591 rows were sent. **The printer is reporting how many rows it actually received.** The
+characteristic failure of this driver — the one that broke v1.3.3 and v1.3.4 — is rows
+dropped silently while progress reports 100 %, and the whole reason `PACE_MS` exists is
+that BLE writes go out unacked. Here is a count coming back from the other side of the
+radio. Nothing reads it yet; the driver files it into `lastUnsolicited` and drops it.
+Whether the other models emit it has not been checked — the B1 Pro captures predate anyone
+looking for it.
+
+**`0xDB` is a rejection.** Driving the D110 with the `v4` task, `0xdb 06` arrived twice:
+immediately after the 13-byte `SetPageSize` (which never got its `0x14`) and again after
+`PageEnd` (never got its `0xe4`). Under the `b1` task it never appeared and every command
+acked. So `0xdb` is the printer refusing a command, `06` presumably the reason — the code
+is not decoded. Worth knowing because the refusal is otherwise invisible: the driver just
+times out and reports "no response".
+
+**`0xA5` answers with 2 bytes on this model, so protocol detection yields `null`.**
+`detectPrinter` (`src/niimbot.js:321`) requires ≥ 13 bytes of `PrinterStatusData` to derive
+`protocolVersion`; the D110 replies `b5: 30 30`. Harmless — the task comes from the
+registry, not from the protocol version — but `printer.protocolVersion` is `null` for this
+model and no amount of retrying changes it.
+
+**The heartbeat answers with opcode `0x00`, not `0xD9`.** `b1Handshake` and `getStatus`
+send `0xdc [0x04]` and wait for `0xd9`; the D110 replies with cmd `0x00`, payload `01`. The
+wait therefore always times out — **1 s burned on every status read on this model** — and
+`decodeHeartbeat` returns null because the layout is picked by the response opcode. The
+RFID half (`0x1a` → `0x1b`) works normally, which is why the roll tag reads fine while the
+heartbeat is empty.
+
+**Not tried, and it would have saved the ruler:** `probe(0xDC, [0x03])` (see *The printer
+reports its own printhead width*, above) should report the D110's head directly. The 96 px
+in `registry.json` was inferred instead — 120 px sent, clipped at 12 mm measured. Running
+the probe would give a second, independent source for the same number, and it needs no
+labels.

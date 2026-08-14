@@ -5,7 +5,32 @@ All notable changes to this project are documented here. The format is based on
 [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
+### Added
+- **Niimbot D110 (model id 2304)** — the fifth validated printer. Printed end to end on
+  real hardware 2026-08-14 (printer counter reached page 1, print 100 %, feed 100 %).
+  `MODEL_IDS` gets a `2304` entry (`task: "b1"`, `dpi: 203`, `paced: true`,
+  `bundle: false`); `registry.json` gets a `d110` model and a `T15x50` size. `task: "b1"`
+  is measured, not assumed: driven as `v4` the printer acked SetDensity, SetLabelType,
+  PrintStart and PrintStatus, then went silent on the two v4-specific commands
+  (SetPageSize 13-byte, PageEnd); driven as `b1` every command acked and the page
+  printed. `dpi: 203` is measured (591 rows ≈ 73 mm). `T15x50`'s `w_px` (96) is the
+  printhead, not the label — 15 mm at 203 dpi is 120 px, and the print came out clipped
+  at 12 mm (96 px). **Hardware confirmation that a print actually sent at 96 px comes out
+  correctly is still outstanding** — the 96 was inferred from a print sent at 120 that
+  came back clipped.
 ### Fixed
+- **D110 (`T15x50`) printed ~0.8 mm low** — a blank strip at the top of the label and the
+  same amount of content lost off the bottom (measured 2026-08-14 on paper). `T15x50` now
+  carries `offset_y_px: -6` in `registry.json` (0.8 mm × 8 px/mm ≈ 6.4 px, rounded to the
+  nearer whole row). This is a paper-registration correction, not a scale fix — `h_px`
+  stays 400 because the label really is 50 mm. The mechanism already handled a negative
+  offset (`ctx.drawImage(bmp, 0, dy, w, h)` in `src/niimbot.js` accepts negative `dy`); it
+  had just never been *used* with one, so two comments describing only the positive case
+  were misleading and are now corrected to cover both directions (`T50x30_b1`'s `+4` pushes
+  down for the B1's opposite error; `T15x50`'s `-6` pulls up for the D110). Cost: pulling
+  the print up crops the top 6 rows of the source image. Confirmed from one ruler
+  measurement of one label — paper registration can vary label to label, so **hardware
+  reconfirmation on more D110 labels is still outstanding**.
 - **The repo's front page had been announcing v1.3.5 since 7 June**, through four
   releases. Pushing a tag published to npm and created no GitHub Release, and the README's
   `github/v/release` badge reads the Releases page — so the shop window said 1.3.5 while
