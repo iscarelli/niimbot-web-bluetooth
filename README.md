@@ -84,10 +84,17 @@ The app picks the printer by passing a **`model`** and **`size`** object (both f
   `W` in `SetPageSize`, the printer prints columns `0 … W-1`, and anything past the head
   is dropped with no error. On the M2-H, 567 is not a head limit at all: that printer is
   **thermal transfer (it uses a ribbon)**, the ribbon drifts slightly, and the narrower
-  width is a margin that absorbs the drift. Its head reaches at least 584 — solid black
-  at 584 printed edge to edge (measured 2026-08-13). Use `T50x30` there and you lose the
-  margin the number exists to provide; use it on a printer whose head really is narrower
-  and you lose the right edge of every label.
+  width is a margin that absorbs the drift. Use `T50x30` there and you lose the margin
+  the number exists to provide; use it on a printer whose head really is narrower and you
+  lose the right edge of every label.
+
+  **Ask the printer instead of guessing.** `await Niimbot.probe(0xdc, [0x03])` answers
+  `0xDE`, whose third 16-bit field is the printhead width in pixels — confirmed by
+  measurement on a D11_H (it reports 144, and solid black at 177 px and at 144 px came
+  out identical, both clipped at 144). An earlier version of this section said the M2-H's
+  head "reaches at least 584" because black printed edge to edge at that width; `dc[03]`
+  says **576**, and 8 px is 0.68 mm — inside what "it reached the edge" can hide. That
+  claim is withdrawn.
 
   The safe pattern is the one the demo follows: call **`Niimbot.identify(model)`**, match
   `Niimbot.printer.modelId` against `id` in `registry.json`, and offer only the sizes
