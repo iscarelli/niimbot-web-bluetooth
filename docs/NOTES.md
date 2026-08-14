@@ -111,7 +111,7 @@ does **not** ship, and stays arithmetic nobody has put on paper, is the **full-p
 reading — the 1122 px figure in the protocol doc. Printing across the transparent tail
 has never been tried.
 
-## Write mode: `"fast"` is an unmeasured default (open)
+## Write mode: `"fast"` is an unmeasured default, and the default is not the problem
 
 Everything measured so far, on 2026-08-13 unless noted. The point of the table is the
 column that is empty.
@@ -123,6 +123,8 @@ column that is empty.
 | 5-label stress | dense (noise) | iPhone | `fast` | **4 of 5**, raster truncated, all numbered 1 |
 | 5-label stress | dense | iPhone | `paced` | 5 correct |
 | 25×38 and 30×45 flags | medium | Mac (⇒ `paced`) | auto | printed |
+| **5-label stress** | **dense (noise)** | **non-Mac desktop** | **`paced`** | **nothing on paper**, rejected at page 1 |
+| **5-label stress** | **dense (noise)** | **Mac (⇒ `paced`)** | **auto** | **5 correct, numbered 1–5** |
 | macOS, historical (v1.3.3/1.3.4) | — | macOS | `fast` | blank page reported as 100% |
 | rackplan label, 1st production run | **sparse** (12 % black) | **unrecorded** | auto | **failed** (`Failed to write to BLE`) |
 | rackplan label, later run | **sparse** | **unrecorded** | auto | printed |
@@ -132,18 +134,33 @@ on a machine whose OS nobody recorded — and with `WRITE_MODE` unset, the effec
 IS the platform (`IS_MAC` downgrades `fast` → `paced` at `src/niimbot.js:359`), so an
 unrecorded OS means an unrecorded mode.
 
-**Why the default has not been flipped to `paced` yet.** Two readings survive the same
-data and they point opposite ways:
+**Flipping the default to `paced` would NOT have fixed the machine that fails.** This is
+the finding that settles the question, and it arrived by measurement rather than
+argument. The two bold rows above are the **same content, the same nominal write mode,
+on two machines**:
 
-- *Density is the trigger* — sparse content passes in `fast`, dense content does not.
-  Requires the rackplan successes to have been Windows/`fast`.
-- *`fast` simply never worked* — the rackplan successes were a Mac, i.e. `paced`, and
-  `fast` has never printed anything correctly anywhere.
+- Mac, dense noise, `paced` → **5 correct labels**
+- non-Mac desktop, dense noise, `paced` → **nothing on paper**, rejected at the first
+  page's PageEnd
 
-The rackplan session (the consumer) raised the second reading, and it is the stronger
-objection: the two rows that would decide it are the two with an unrecorded platform.
-Note also that rackplan's **first** production print — sparse content — *failed*, which
-already sits badly with the density reading.
+So the failing machine is not failing because it picked the wrong mode. It fails at a
+burst that another machine in the same mode handles. Changing which mode is chosen by
+default cannot fix that; it would only slow down everyone else while leaving that
+machine broken. **The default stays as it is.**
+
+(The earlier reading on this page — "density is the trigger, so pace everything" — was
+mine, and it was wrong for this reason. The rackplan session objected first, on the
+grounds that the deciding rows had an unrecorded platform; the measurement then showed
+the platform matters even when the mode is held constant.)
+
+What the driver can do instead is what 2.0.0 already does: make the failure **visible**
+(a rejection naming what stalled, and the connect line stating detected/effective mode
+without needing DEBUG) and make every rung **reachable** (`WRITE_MODE`, including
+`"acked"`, which 1.4.0 could not select at all). Climbing the ladder is the
+application's job — the rackplan built exactly that, and it is the right shape.
+
+Still untested anywhere: `"acked"` on real hardware. It is the one rung nobody has put
+on paper, and it is the obvious next thing to try on a machine that fails in `paced`.
 
 **What settles it:** one print on Windows and one on a Mac, reporting
 `modo_detectado`/`modo_efetivo`. The rackplan now logs both per print (table
