@@ -12,8 +12,8 @@ All notable changes to this project are documented here. The format is based on
   its `_note` says what that costs: 709 rows is double a 50×30, so on a Mac — where the
   driver paces at 10 ms per write — the demo's *stress* label took **7.0 s to upload
   against 1.1 s to print**.
-- **A "Print realistic label" button**, because that 7.0 s is not what a real label costs
-  and the demo had no way to show the difference. It draws what people actually print —
+- **A "Print realistic label" button** — *confirmed on paper 2026-08-14* — because that
+  7.0 s is not what a real label costs and the demo had no way to show the difference. It draws what people actually print —
   frame, heading, two data lines, a barcode band, a timestamp — where every band is a run
   of identical rows and run-length does its job. The stress label's corner-to-corner
   diagonals touch nearly every row and defeat it entirely (589 writes for 709 rows, one
