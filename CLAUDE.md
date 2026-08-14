@@ -74,8 +74,21 @@ in `docs/TASKS.md`.
   — never reconstructed later from `git log`. The version in `package.json` and
   `VERSION` (`src/niimbot.js`) is bumped **separately, when releasing**, which is
   when `## [Unreleased]` becomes `## [x.y.z] - YYYY-MM-DD`. An implementer therefore
-  does **not** bump the version; releasing is the maintainer's step (it also tags and
-  publishes to npm). `CHANGELOG.md` (Keep a Changelog + SemVer) is the release-notes
-  record, not a task log — the task queue is `docs/TASKS.md`.
+  does **not** bump the version; releasing is the maintainer's step.
+  `CHANGELOG.md` (Keep a Changelog + SemVer) is the release-notes record, not a task
+  log — the task queue is `docs/TASKS.md`.
+- **NEVER run `npm publish`. Pushing the tag IS the release.**
+  `.github/workflows/release.yml` fires on `push` of a `v*.*.*` tag and publishes with
+  OIDC trusted publishing (`--provenance`); it also refuses to publish if the tag and
+  `package.json` disagree. So a release is: bump `package.json` + `VERSION`
+  (`src/niimbot.js`), close `## [Unreleased]`, commit, `git tag -a vX.Y.Z`, push both.
+  A local `npm publish` is at best redundant and in practice **misleading**: it has
+  fired twice (2.0.0 as `E404`, 2.1.0 as "cannot publish over"), both times *after* CI
+  had already published successfully, and both times the error got a wrong explanation
+  before anyone checked the registry. If you need to confirm a release landed, ask the
+  registry, not the publish output:
+  `npm view niimbot-web-bluetooth time --json` and
+  `npm view niimbot-web-bluetooth@X.Y.Z dist.shasum dist.attestations` — a provenance
+  attestation can only have come from CI.
 - **`registry.json` is the model/label data**; the driver must stay
   application-agnostic and read models and sizes from the caller.
