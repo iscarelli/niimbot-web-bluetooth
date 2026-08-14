@@ -6,6 +6,13 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 ### Changed
+- **Corrected a comment that promised continuous streaming.** The header block said a
+  batch "streams continuously with no stop between labels". Measured on a B1 Pro,
+  2026-08-13, with the packet trace: in `"paced"` a dense page takes ~3 s to send
+  (~255 row-writes × `PACE_MS` 10 ms) while the printer finishes printing one in less,
+  so it idles between labels and the pause is visible on the paper path. The look-ahead
+  hides latency; it cannot create bandwidth. The claim holds in `"fast"`, not in
+  `"paced"` on dense content — behaviour unchanged, the comment now says which.
 - **The connect line now says WHY `IS_MAC` decided what it decided.** It reads
   `mac=false [uaData="Windows" platform="MacIntel"]` instead of a bare `mac=false`.
   On 2026-08-13 the same Chrome on the same Mac logged `mac=true` in one session and

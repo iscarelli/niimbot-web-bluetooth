@@ -34,9 +34,17 @@
  *
  *   PrintEnd (0xF3) is what feeds out + retracts the paper, so it runs exactly
  *   once per job, not per page — otherwise the printer stops and pulls the paper
- *   back between every label. Pages are pipelined with a 1-page look-ahead (the
- *   next page is queued while the current one prints, throttled via the 0xA3→0xB3
- *   status counter) so a batch streams continuously with no stop between labels.
+ *   back between every label. Pages are pipelined with a look-ahead (the next page
+ *   is queued while the current one prints, throttled via the 0xA3→0xB3 status
+ *   counter), which removes the retract between labels.
+ *
+ *   It does NOT always remove the PAUSE between labels, and this comment used to
+ *   claim it did. Whether the paper keeps moving depends on which is faster, the
+ *   send or the print. Measured on a B1 Pro, 2026-08-13, dense pages in "paced":
+ *   ~255 row-writes × PACE_MS 10 ms ⇒ ~3 s to send a page, while the printer
+ *   finished one in less — so it waited, and the pause is visible on the paper
+ *   path. In "fast" the send is quick enough that the same batch streams. The
+ *   look-ahead hides latency; it cannot create bandwidth.
  */
 (function (root) {
   "use strict";
@@ -750,9 +758,10 @@
     await sendWait(0x01, start, 0x02, 2000);                                // PrintStart
   }
 
-  // Queue one page's data within an open job — does NOT wait for it to print, so
-  // the next page can be sent while this one is still printing (keeps the printer
-  // buffer primed → no stop between labels).
+  // Queue one page's data within an open job — does NOT wait for it to print, so the
+  // next page can be sent while this one is still printing. That keeps the printer
+  // buffer primed when the send can keep up; in "paced" on dense pages it cannot (see
+  // the header block), and the printer idles between labels waiting for data.
   async function sendPagePacked(model, size, buf, stride, copies, onProgress) {
     const W = size.w_px, H = size.h_px;
     const c = Math.max(1, copies | 0);   // printer repeats this page `c` times from one upload
