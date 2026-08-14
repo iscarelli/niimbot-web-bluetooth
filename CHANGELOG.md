@@ -5,6 +5,8 @@ All notable changes to this project are documented here. The format is based on
 [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
+
+## [2.2.0] - 2026-08-14
 ### Added
 - **`registry.json` ships `T40x60`** — 40 × 60 mm at 300 dpi (472 × 709), from a roll on
   the maintainer's B1 Pro (tag `6972842748560`, `printLimit` 150 / `capacity` 125 = **1.2**,
@@ -505,7 +507,8 @@ All notable changes to this project are documented here. The format is based on
   (`v4`, 300 dpi), reverse-engineered protocol V4 documentation, and a standalone demo.
 - Multi-label batches print as one continuous job (no stop/retract between labels).
 
-[Unreleased]: https://github.com/iscarelli/niimbot-web-bluetooth/compare/v2.1.0...HEAD
+[Unreleased]: https://github.com/iscarelli/niimbot-web-bluetooth/compare/v2.2.0...HEAD
+[2.2.0]: https://github.com/iscarelli/niimbot-web-bluetooth/compare/v2.1.0...v2.2.0
 [2.1.0]: https://github.com/iscarelli/niimbot-web-bluetooth/compare/v2.0.0...v2.1.0
 [2.0.0]: https://github.com/iscarelli/niimbot-web-bluetooth/compare/v1.4.0...v2.0.0
 [1.4.0]: https://github.com/iscarelli/niimbot-web-bluetooth/compare/v1.3.5...v1.4.0

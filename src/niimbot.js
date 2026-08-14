@@ -49,7 +49,7 @@
 (function (root) {
   "use strict";
 
-  const VERSION = "2.1.0";   // shown in the demo/console; bump on each release (or dev change)
+  const VERSION = "2.2.0";   // shown in the demo/console; bump on each release (or dev change)
   const SVC_UUID = "e7810a71-73ae-499d-8c15-faa9aef0c3f2";
   const CHAR_UUID = "bef8d6c9-9c21-4c9e-b632-bd58c1009f9f";
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
