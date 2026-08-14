@@ -11,6 +11,14 @@ All notable changes to this project are documented here. The format is based on
   the Node 20 runtime those majors declare. Syntax-verified only — the workflow only
   runs on a `v*.*.*` tag push, so this is unverified end-to-end until the next release.
 
+### Fixed
+- **T-012**: `demo/index.html` sent iOS visitors to a browser that does not exist. The
+  top banner and the "Web Bluetooth unavailable" message both said only "Chrome/Edge",
+  which is false advice on iOS since neither Safari nor Chrome there expose Web
+  Bluetooth. Both now give a path per platform: Chrome/Edge on desktop, Chrome on
+  Android, [Bluefy](https://apps.apple.com/app/bluefy-web-ble-browser/id1492822055) on
+  iOS.
+
 ## [2.3.1] - 2026-08-14
 ### Fixed
 - **T-010**: the npm `description` in `package.json` still said "Validated on B1, B1

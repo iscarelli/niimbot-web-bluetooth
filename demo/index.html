@@ -75,7 +75,10 @@
 <body>
   <h1>niimbot — print demo <span id="drv" title="driver version actually loaded in this tab"></span></h1>
   <p>Prints a <strong>test label</strong> (frame + diagonals + text) straight
-     from the browser via Web Bluetooth. Requires <strong>Chrome/Edge</strong>.</p>
+     from the browser via Web Bluetooth. Requires <strong>Chrome/Edge</strong> on
+     desktop, <strong>Chrome</strong> on Android, or
+     <strong><a href="https://apps.apple.com/app/bluefy-web-ble-browser/id1492822055" target="_blank" rel="noopener">Bluefy</a></strong>
+     on iOS, where neither Safari nor Chrome support Web Bluetooth.</p>
 
   <div>
     <label>Model: <select id="model"></select></label>
@@ -283,7 +286,7 @@
     });
 
     if (!Niimbot.isSupported()) {
-      $("status").innerHTML = '<span class="warn">Web Bluetooth unavailable — use Chrome/Edge over HTTPS or localhost.</span>';
+      $("status").innerHTML = '<span class="warn">Web Bluetooth unavailable. Use Chrome/Edge (desktop) or Chrome (Android) over HTTPS or localhost, or on iOS use <a href="https://apps.apple.com/app/bluefy-web-ble-browser/id1492822055" target="_blank" rel="noopener">Bluefy</a>, since Safari and Chrome do not support Web Bluetooth there.</span>';
       $("print").disabled = true;
     }
 
