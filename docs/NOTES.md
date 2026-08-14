@@ -110,3 +110,50 @@ Both flag-only variants ship in `registry.json` as `T30x45` and `T25x38` (2.0.0)
 does **not** ship, and stays arithmetic nobody has put on paper, is the **full-pitch**
 reading — the 1122 px figure in the protocol doc. Printing across the transparent tail
 has never been tried.
+
+## Write mode: `"fast"` is an unmeasured default (open)
+
+Everything measured so far, on 2026-08-13 unless noted. The point of the table is the
+column that is empty.
+
+| what printed | content | platform | write mode | result |
+|---|---|---|---|---|
+| demo test page | dense (diagonals) | non-Mac desktop (`mac=false`) | `fast` (auto) | **nothing on paper**, driver rejected |
+| demo test page | dense | same machine | `paced` | printed |
+| 5-label stress | dense (noise) | iPhone | `fast` | **4 of 5**, raster truncated, all numbered 1 |
+| 5-label stress | dense | iPhone | `paced` | 5 correct |
+| 25×38 and 30×45 flags | medium | Mac (⇒ `paced`) | auto | printed |
+| macOS, historical (v1.3.3/1.3.4) | — | macOS | `fast` | blank page reported as 100% |
+| rackplan label, 1st production run | **sparse** (12 % black) | **unrecorded** | auto | **failed** (`Failed to write to BLE`) |
+| rackplan label, later run | **sparse** | **unrecorded** | auto | printed |
+
+**Zero confirmed successes in `"fast"`.** Every success above either ran `paced` or ran
+on a machine whose OS nobody recorded — and with `WRITE_MODE` unset, the effective mode
+IS the platform (`IS_MAC` downgrades `fast` → `paced` at `src/niimbot.js:359`), so an
+unrecorded OS means an unrecorded mode.
+
+**Why the default has not been flipped to `paced` yet.** Two readings survive the same
+data and they point opposite ways:
+
+- *Density is the trigger* — sparse content passes in `fast`, dense content does not.
+  Requires the rackplan successes to have been Windows/`fast`.
+- *`fast` simply never worked* — the rackplan successes were a Mac, i.e. `paced`, and
+  `fast` has never printed anything correctly anywhere.
+
+The rackplan session (the consumer) raised the second reading, and it is the stronger
+objection: the two rows that would decide it are the two with an unrecorded platform.
+Note also that rackplan's **first** production print — sparse content — *failed*, which
+already sits badly with the density reading.
+
+**What settles it:** one print on Windows and one on a Mac, reporting
+`modo_detectado`/`modo_efetivo`. The rackplan now logs both per print (table
+`impressoes_niimbot`, created 2026-08-13 in response to exactly this gap), so the next
+two prints answer it by measurement rather than reconstruction.
+
+**The cost asymmetry, which is why the default has not been flipped "just in case"
+either way.** Unnecessary `paced` costs speed for everyone (~3× on dense pages, measured
+from the batch logs); wrongful `fast` costs a wrong label. Since 2.0.0 the *measured*
+`fast` failures reject loudly rather than reporting success — but that protection is not
+total: a page whose rows are partly dropped while PageEnd still acks and the counter
+still advances would print short and resolve fine. So the asymmetry is reduced, not
+removed.

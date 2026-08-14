@@ -116,10 +116,17 @@
 
   // Flow control. Unacked writes (writeValueWithoutResponse) can be dropped under a
   // burst, leaving the page incomplete — on the B1 the page stalls; on macOS the page
-  // comes out BLANK yet reports 100% (CoreBluetooth silently drops the burst that
-  // Windows tolerates). "acked" = write-with-response (ordered, slow); "paced" = unacked
-  // + a short gap; "fast" = unacked, no gap. The B1 Pro / M2-H take "fast" on Windows,
-  // but where IS_MAC holds every model is paced so rows aren't dropped.
+  // comes out BLANK. "acked" = write-with-response (ordered, slow); "paced" = unacked
+  // + a short gap; "fast" = unacked, no gap.
+  //
+  // ⚠ "fast" IS AN UNMEASURED DEFAULT, not a measured choice. This comment used to say
+  // the B1 Pro / M2-H "take fast on Windows" and that Windows "tolerates" the burst.
+  // Nothing ever measured that. As of 2026-08-13 the score is: THREE confirmed failures
+  // in "fast" (a non-Mac desktop and an iPhone, both on dense content, plus the macOS
+  // blank-page history) and ZERO confirmed successes in "fast" — every print known to
+  // have succeeded either ran "paced" or ran on a machine whose OS nobody recorded.
+  // Whether any platform actually needs the unpaced path is still open; see
+  // docs/NOTES.md § Write mode. Do not restate the old claim without a measurement.
   // IS_MAC matches iOS TOO, and that is not a bug in the test: every iOS user agent
   // contains "like Mac OS X", and iOS is CoreBluetooth as well. The consequence is that
   // an iPhone has only ever printed PACED — whether it needs to is unmeasured. See the
