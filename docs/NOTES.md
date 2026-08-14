@@ -532,6 +532,16 @@ Monotonic, and **the content does not explain it**: density 3 sends *more* rows 
 still finishes sooner. More heat means more dwell per line, so the head runs slower. Whatever
 `0x21` does, it reaches the mechanism.
 
+A later run removed even that caveat, by accident — densities 3 and 5 happened to encode to
+**the same row count**, making it a controlled pair:
+
+    density 3   139 image rows   1320 ms
+    density 5   139 image rows   1562 ms     (+18%)
+
+Identical payload size, 242 ms apart. **Practical consequence for callers, and it belongs in
+the README rather than here alone: turning density up makes the print slower**, and on a
+batch that cost is paid per label.
+
 ### Designing the target: at 300 dpi a pixel is 0.085 mm, and screen intuition is wrong
 
 The first sensitive target was useless too, for a reason worth writing down because it is

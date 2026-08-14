@@ -155,11 +155,28 @@ The image must be exactly `w_px × h_px`. The driver thresholds it to 1-bit
 - `Niimbot.printBatch([url1, url2, …], { model, size, density, onProgress })` — N
   *distinct* labels in one continuous job (one upload each, streamed back-to-back, no
   retract).
-- **`density`** (1–5, the scale the official NIIMBOT app uses) overrides the model's
-  default from `registry.json`. Validated **before the printer is touched**: an
-  out-of-range value throws and nothing is written, because this is the one setting
-  that controls how hard the printhead burns. Whether every model accepts all five
-  values is not established here — all four ship with a default of 3.
+- **`density`** (1–5, the scale the official NIIMBOT app uses) — print heat, per print,
+  overriding the model's default from `registry.json`. Validated **before the printer is
+  touched**: an out-of-range value throws and nothing is written, because this is the one
+  setting that controls how hard the printhead burns.
+  Confirmed on a D11_H (2026-08-14) that the printer both **stores** it — `0x40[0x01]`
+  reads back what `0x21` set — and **acts on** it: the same 139-row image took 1320 ms to
+  print at density 3 and **1562 ms at 5**, because more heat means more dwell per line.
+  So expect a **slower print** as you turn it up; on a batch that cost is per label.
+  **Check your own printer without spending a label** — set it and read it back:
+
+  ```js
+  await Niimbot.identify(model);
+  await Niimbot.probe(0x21, [5]);              // set
+  await Niimbot.probe(0x40, [0x01]);           // → 0x41, data [5] if it took
+  ```
+
+  **What is not established:** which value suits which stock, and whether every model
+  accepts all five — all four ship with a default of 3, and only the D11_H has been
+  measured at all. If you compare values on paper, **do not print solid black**: a fully
+  burned dot cannot get blacker, and a black rectangle will look identical at 1 and at 5.
+  Use fine reversed detail (white bars 1–8 px knocked out of black) and count which steps
+  survive. `docs/NOTES.md` has the target design and the measurements.
 - **Both reject when the printer did not confirm the job** — a page left unacknowledged,
   or the printed-page counter never reaching the total within `Niimbot.PAGE_WAIT_MS`
   (default 25 000). The error names what stalled and where. Through 1.4.0 they resolved

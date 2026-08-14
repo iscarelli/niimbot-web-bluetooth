@@ -80,6 +80,7 @@
   <div>
     <label>Model: <select id="model"></select></label>
     <label>Label: <select id="size"></select></label>
+    <label title="Print heat, 1–5 — the same scale the official app shows. Applies to every print below.">Density: <select id="density"></select></label>
     <label>Text: <input id="text" value="NIIMBOT TEST" size="16"></label>
   </div>
 
@@ -338,7 +339,27 @@
       $("size").value = selected || $("size").options[0].value;
     }
     populateSizes();
-    $("model").addEventListener("change", () => { populateSizes(); refresh(); });
+
+    // Density (print heat), 1–5. Per PRINT, not per model: the model's value is only
+    // the starting point, which is why changing model resets the picker instead of
+    // carrying a number over to a printer it was never chosen for. Measured on a D11_H
+    // 2026-08-14 — the printer stores it (`0x40[0x01]` reads back what `0x21` set) and
+    // acts on it (same 139-row image took 1320 ms at 3 and 1562 ms at 5: more heat,
+    // more dwell per line, slower head). See docs/NOTES.md.
+    function populateDensity() {
+      const def = reg.models[$("model").value].density;
+      $("density").innerHTML = "";
+      for (let d = 1; d <= 5; d++) {
+        $("density").add(new Option(d === def ? `${d} (model default)` : String(d), String(d)));
+      }
+      $("density").value = String(def);
+    }
+    populateDensity();
+    // Every print path reads this. NOT defaulted in the driver — passing it explicitly
+    // is what makes the picker mean anything.
+    const density = () => Number($("density").value);
+
+    $("model").addEventListener("change", () => { populateSizes(); populateDensity(); refresh(); });
 
     // `light` skips the corner-to-corner diagonals. The diagonals touch nearly every
     // row, so they defeat run-length and blow the packet count up to ~one-per-row
@@ -903,7 +924,7 @@
       const canvas = drawTest(size, $("text").value);
       $("print").disabled = true;
       try {
-        await Niimbot.printImage(canvas.toDataURL("image/png"), { model, size, onProgress: status });
+        await Niimbot.printImage(canvas.toDataURL("image/png"), { model, size, density: density(), onProgress: status });
         status("ok — label sent.");
         await rememberAfterPrint(sizeId);
       } catch (e) {
@@ -922,7 +943,7 @@
       const canvas = drawTest(size, $("text").value);
       $("print3copies").disabled = true;
       try {
-        await Niimbot.printImage(canvas.toDataURL("image/png"), { model, size, copies: 3, onProgress: status });
+        await Niimbot.printImage(canvas.toDataURL("image/png"), { model, size, copies: 3, density: density(), onProgress: status });
         status("ok — 3 copies (single upload) sent.");
         await rememberAfterPrint(sizeId);
       } catch (e) {
@@ -953,7 +974,7 @@
       const btns = ["print", "print3", "print5", "print3dense", "print5dense"];
       btns.forEach((b) => ($(b).disabled = true));
       try {
-        await Niimbot.printBatch(urls, { model, size, onProgress: status });
+        await Niimbot.printBatch(urls, { model, size, density: density(), onProgress: status });
         status(`ok — ${count}-label batch sent.`);
         await rememberAfterPrint(sizeId);
       } catch (e) {
@@ -981,7 +1002,7 @@
       const btns = ["print", "print3", "print5", "print3dense", "print5dense"];
       btns.forEach((b) => ($(b).disabled = true));
       try {
-        await Niimbot.printBatch(urls, { model, size, onProgress: status });
+        await Niimbot.printBatch(urls, { model, size, density: density(), onProgress: status });
         status(`ok — ${count} dense labels sent.`);
         await rememberAfterPrint(sizeId);
       } catch (e) {

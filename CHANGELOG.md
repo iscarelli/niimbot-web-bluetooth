@@ -6,6 +6,16 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 ### Added
+- **The demo has a Density picker (1–5)**, next to Model and Label, feeding every print
+  button. It starts at the selected model's default (marked *model default* in the list)
+  and **resets when the model changes**, because a heat value chosen for one printer means
+  nothing on another. Until now the option existed only in the API, so the only way to try
+  it was a console snippet.
+- **README documents what density actually costs and how to check it**, rather than only
+  its signature: the printer stores it *and* slows down for it, so a higher value is a
+  slower print, per label. Also warns against the test everyone reaches for first —
+  comparing solid black, which cannot show a difference — and points at the step-wedge
+  target in `docs/NOTES.md`.
 - **The demo shows which driver version it is actually running**, as a badge next to the
   title (it was already in the tab title and the console, where nobody looks). A tab left
   open across a deploy keeps the driver it loaded — the `?t=` cache-buster is resolved at
