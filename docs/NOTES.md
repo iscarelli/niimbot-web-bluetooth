@@ -123,8 +123,8 @@ column that is empty.
 | 5-label stress | dense (noise) | iPhone | `fast` | **4 of 5**, raster truncated, all numbered 1 |
 | 5-label stress | dense | iPhone | `paced` | 5 correct |
 | 25×38 and 30×45 flags | medium | Mac (⇒ `paced`) | auto | printed |
-| **5-label stress** | **dense (noise)** | **non-Mac desktop** | **`paced`** | **nothing on paper**, rejected at page 1 |
-| **5-label stress** | **dense (noise)** | **Mac (⇒ `paced`)** | **auto** | **5 correct, numbered 1–5** |
+| **5-label stress** | **dense (noise)** | connect line said **`mac=false`** | **`paced`** (override) | **nothing on paper**, rejected at page 1 |
+| **5-label stress** | **dense (noise)** | connect line said **`mac=true`** | **`paced`** (auto) | **5 correct, numbered 1–5** |
 | macOS, historical (v1.3.3/1.3.4) | — | macOS | `fast` | blank page reported as 100% |
 | rackplan label, 1st production run | **sparse** (12 % black) | **unrecorded** | auto | **failed** (`Failed to write to BLE`) |
 | rackplan label, later run | **sparse** | **unrecorded** | auto | printed |
@@ -134,19 +134,23 @@ on a machine whose OS nobody recorded — and with `WRITE_MODE` unset, the effec
 IS the platform (`IS_MAC` downgrades `fast` → `paced` at `src/niimbot.js:359`), so an
 unrecorded OS means an unrecorded mode.
 
-**Flipping the default to `paced` would NOT have fixed the machine that fails.** This is
-the finding that settles the question, and it arrived by measurement rather than
-argument. The two bold rows above are the **same content, the same nominal write mode,
-on two machines**:
+**Flipping the default to `paced` would NOT have fixed the environment that fails.**
+The two bold rows above are the **same content and the same effective write mode**, with
+opposite results — so whatever differs, it is not the mode:
 
-- Mac, dense noise, `paced` → **5 correct labels**
-- non-Mac desktop, dense noise, `paced` → **nothing on paper**, rejected at the first
-  page's PageEnd
+- `mac=true` environment, dense noise, `paced` → **5 correct labels**
+- `mac=false` environment, dense noise, `paced` → **nothing on paper**, rejected at the
+  first page's PageEnd
 
-So the failing machine is not failing because it picked the wrong mode. It fails at a
-burst that another machine in the same mode handles. Changing which mode is chosen by
-default cannot fix that; it would only slow down everyone else while leaving that
-machine broken. **The default stays as it is.**
+Changing which mode is chosen by default therefore cannot fix the failing side; it would
+only slow down everyone else. **The default stays as it is.**
+
+⚠ **The "platform" column above reports what `IS_MAC` printed in the connect line, NOT
+which computer was used.** Nobody recorded the machine for these runs, and `IS_MAC` is
+not trustworthy as a platform label here: on 2026-08-13 the maintainer stated that a
+session whose connect line read `mac=true` was run on Windows. So the two rows differ in
+*something* about the environment — OS, browser, BLE stack, or distance to the printer —
+and this page does not know which. Do not restate them as "Mac vs Windows".
 
 (The earlier reading on this page — "density is the trigger, so pace everything" — was
 mine, and it was wrong for this reason. The rackplan session objected first, on the
