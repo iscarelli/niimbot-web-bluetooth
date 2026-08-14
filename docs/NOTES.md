@@ -340,3 +340,35 @@ even correspond — this is a lead, not a decode, and nothing in the driver acts
 ribbon fitted, then **take the ribbon out** and *Read status* again. If `d[7]` goes
 `01 → 00`, the field is real and belongs back in `decoded` — scoped to models that have a
 ribbon, and marked `observed` only for those actually captured.
+
+## M2-H info space, swept (2026-08-13)
+
+Probed with `Niimbot.probe()` on an M2-H. Unsupported sub-codes answer with opcode
+**`0x00`, data `01`** — a clear "not supported", which is what makes a sweep readable.
+
+**`0x1A` (RfidInfo) IGNORES its parameter.** `1a[02]`, `[03]`, `[04]` and `[05]` all
+return the byte-identical paper-roll payload that `1a[01]` returns. Whatever the official
+app reads for the ribbon, it is not a second RFID tag behind this command.
+
+Answers the b1 handshake never asks for:
+
+| request | response | value | read |
+|---|---|---|---|
+| `40[01]` | `41` | `03` | unexplained |
+| `40[06]` | `46` | `02` | unexplained |
+| `40[0e]` | `4e` | `02` | unexplained |
+| `40[0f]` | `4f` | `00 1a` (26) | unexplained |
+| `dc[01]` | `dd` 13 b | `1f 56 00 0b 00 0b 00 00 4b 00 04 00 01` | heartbeat *Advanced1* |
+| `dc[02]` | `df` 12 b | all zeros | unexplained |
+| `dc[03]` | `de` 10 b | `01 01 01 36 02 40 03 02 01 00` | unexplained; note `01 36` also appears as `40[09]` |
+
+Already known from the handshake: `40[08]`=model id, `40[09]`=`01 36`, `40[0a]`=`04`,
+`40[0b]`=serial, `40[0c]`=`01 01`, `40[0d]`=`02 11 07 06 00 27`, `a5`→`b5`.
+
+**The value 4 recurs in three places** — Advanced2 `d[2]`, Advanced1 `d[10]`, and
+`40[0a]` — all of which the driver or niimbluelib call charge level. It did **not**
+change when the ribbon was removed entirely, so it is not the ribbon.
+
+**Still unanswered: where the remaining-ribbon figure comes from.** Everything above is a
+single snapshot; a snapshot cannot identify a level. The diff against a fresh ribbon is
+the missing half, and until it exists nothing here should be named.

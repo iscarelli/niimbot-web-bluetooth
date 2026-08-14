@@ -507,6 +507,13 @@
       //     M2-H, ribbon in:  1f 5d 04 4b 00 00 01 [01] 00 00 00
       //     M2-H, ribbon out: 1f 5e 04 4b 00 00 01 [00] 00 00 00
       // and consistent with the B1 Pro (no ribbon, d[7] = 00) across its six captures.
+      // ⚠ THE NAME IS THE WEAK PART, not the measurement. The NIIMBOT Community Wiki
+      // (printers.niim.blue/interfacing/proto) documents TWO adjacent ribbon fields in
+      // Advanced 2 — "Ribbon inserted" and "Ribbon RFID Success" — and pulling the
+      // ribbon zeroes BOTH, so the A/B above cannot say which one d[7] is. It says only
+      // that d[7] tracks the ribbon. `ribbonInserted` is the reading a caller can act on
+      // ("a ribbon is in there and readable"); if a capture ever separates the two,
+      // rename it rather than inventing a second field.
       // OBSERVED only on the 11-byte layout that A/B was run on; on 13 bytes it agrees
       // with a printer that HAS no ribbon, which cannot distinguish "absent" from
       // "field means something else here", so it stays inferred there.
