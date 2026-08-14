@@ -87,6 +87,7 @@
   <button id="print">Connect and print</button>
   <button id="print3copies">Print 3 copies (1 upload)</button>
   <button id="print3">Print 3-label batch</button>
+  <button id="print5">Print 5-label batch (normal)</button>
   <button id="print3dense">Print 3 dense labels (stress)</button>
   <button id="print5dense">Print 5 dense labels (stress)</button>
   <div id="status"></div>
@@ -922,30 +923,39 @@
       }
     });
 
-    $("print3").addEventListener("click", async () => {
+    // `count` DISTINCT realistic labels (light: no corner-to-corner diagonals), so the
+    // print order and the absence of a retract between them are obvious on the paper.
+    //
+    // The 5-label version exists to measure the INTER-LABEL PAUSE against the dense one.
+    // Sending a page costs roughly one paced write per surviving row, so a light label —
+    // where run-length collapses most rows — should send far faster than it prints and
+    // keep the paper moving, while the dense button (~one write per row) cannot. Same
+    // count, same size, only the content differs: that is the comparison.
+    async function runBatch(count) {
       const model = reg.models[$("model").value];
       const sizeId = $("size").value;
       const size = allSizes()[sizeId];
-      // 3 distinct labels so the print order — and the absence of a retract
-      // between them — is obvious on the paper. Realistic (light) labels so the
-      // non-copies path streams continuously; the dense buttons cover worst case.
       const off = document.createElement("canvas");
-      const urls = [1, 2, 3].map((n) => {
+      const urls = [];
+      for (let n = 1; n <= count; n++) {
         drawTest(size, `${$("text").value} #${n}`, off, true);
-        return off.toDataURL("image/png");
-      });
-      $("print").disabled = true; $("print3").disabled = true;
+        urls.push(off.toDataURL("image/png"));
+      }
+      const btns = ["print", "print3", "print5", "print3dense", "print5dense"];
+      btns.forEach((b) => ($(b).disabled = true));
       try {
         await Niimbot.printBatch(urls, { model, size, onProgress: status });
-        status("ok — 3-label batch sent.");
+        status(`ok — ${count}-label batch sent.`);
         await rememberAfterPrint(sizeId);
       } catch (e) {
         fail(e);
       } finally {
-        $("print").disabled = false; $("print3").disabled = false;
+        btns.forEach((b) => ($(b).disabled = false));
         refresh();
       }
-    });
+    }
+    $("print3").addEventListener("click", () => runBatch(3));
+    $("print5").addEventListener("click", () => runBatch(5));
 
     // Worst-case stress: `count` dense noise labels at the selected size. Pick your
     // LARGEST label here to push the most data through the look-ahead pipeline.
@@ -959,7 +969,7 @@
         drawDense(size, String(n), off);
         urls.push(off.toDataURL("image/png"));
       }
-      const btns = ["print", "print3", "print3dense", "print5dense"];
+      const btns = ["print", "print3", "print5", "print3dense", "print5dense"];
       btns.forEach((b) => ($(b).disabled = true));
       try {
         await Niimbot.printBatch(urls, { model, size, onProgress: status });

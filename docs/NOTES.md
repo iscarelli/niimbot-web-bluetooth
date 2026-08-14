@@ -188,3 +188,46 @@ from the batch logs); wrongful `fast` costs a wrong label. Since 2.0.0 the *meas
 total: a page whose rows are partly dropped while PageEnd still acks and the counter
 still advances would print short and resolve fine. So the asymmetry is reduced, not
 removed.
+
+## Baseline: a healthy 5-page batch, `paced`, B1 Pro (2026-08-13, 22:25)
+
+Kept as numbers rather than the raw trace. Full DEBUG packet dump was captured at the
+time; what mattered is here.
+
+Job: 5 dense-noise labels, 50 × 30 (584 × 354), `effective=paced`, `PACE_MS = 10`,
+`bundle=false`, `mac=true [uaData="macOS" platform="MacIntel"]`. **All five labels came
+out correct on paper.** Protocol-wise: every `0xE3` answered by `0xE4`, page counter ran
+0 → 5, `PrintEnd` acked, 16.4 s total.
+
+| page | row-writes | time to send |
+|---|---|---|
+| 0 | 177 | 2.29 s |
+| 1 | 255 | 3.14 s |
+| 2 | 273 | 3.41 s |
+| 3 | 226 | 3.01 s |
+| 4 | 239 | 2.96 s |
+
+**~12 ms of wall clock per row-write, against `PACE_MS = 10`** — so the send time is
+essentially the pacing, not the data. The printer finished page 3 at t+12.35 s while
+page 4 was still being sent (finished t+15.33 s), i.e. **the printer waits for the
+driver**, and that idle is the inter-label pause visible on the paper path.
+
+**Why this matters for tuning:** `PACE_MS` cannot simply be lowered — it is the margin
+that stops rows being dropped. The lever that costs nothing is **fewer writes**, i.e.
+frame bundling (`BUNDLE_MAX`), which packs several frames into one BLE write and
+therefore pays the gap once per bundle instead of once per row. Bundling is enabled for
+the B1 (4096) and M2-H (4608) and **disabled for the B1 Pro (4097)** — see `MODEL_IDS`
+in `src/niimbot.js`. The comment there says bundling is on "only where validated", so
+the B1 Pro's `false` records an absence of testing, not a known failure.
+
+**There is currently no way to test that.** `Niimbot.BUNDLE_MAX` is exposed, but the
+per-model gate `_bundleAllowed` is not, and `max = _bundleAllowed ? BUNDLE_MAX : 0`
+means the exposed knob does nothing on a B1 Pro. Making the gate overridable is the
+prerequisite for measuring whether bundling removes the pause there.
+
+**For comparison when a failure is next captured**, one difference between this healthy
+trace and the failing `fast` run of 13:53 is recorded without interpretation: here the
+printer emitted sparse `0xD3` notifications during row streaming (`01 2b 01`,
+`01 61 01`, `00 95 01`); there it emitted **hundreds** of `0x14 (01 00)` — the
+SetPageSize ack, of which one per page would be expected — arriving seconds late. What
+that means is unknown.
