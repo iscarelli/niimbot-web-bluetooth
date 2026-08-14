@@ -479,10 +479,45 @@ niimbluelib's info enum, and the driver's own sweep skips it (`src/niimbot.js:43
     await Niimbot.probe(0x21, [5], 800);  console.log('após 5', await info());
 
 The test validates itself: if the returned byte *tracks what was set*, it both identifies
-the field and proves the printer took the value — which points at (1), and the next test is
-a **hairline chart** rather than a black rectangle. If the byte never moves, it points at
-(2), and the question becomes whether this model wants the density somewhere else in the
-sequence or on a different scale.
+the field and proves the printer took the value.
 
-Until one of those runs, the honest statement is the one in the changelog: the driver sends
-what the caller asked for, and **no model has had its density verified on paper**.
+### Answered — and the answer was a third explanation nobody listed (2026-08-14)
+
+`0x40[0x01]` → `0x41` **is the density**, and it follows what is written, on a D11_H:
+
+    read → 03      (the registry default)
+    0x21 [01] → ack 0x31 01,   read → 01
+    0x21 [05] → ack 0x31 01,   read → 05
+    0x21 [03] → ack 0x31 01,   read → 03
+
+So the field is identified by measurement rather than by trusting an enum, and hypothesis
+(2) is dead: this printer accepts and stores the value.
+
+But the same log killed hypothesis (1) as the *explanation*, because it also carried this:
+
+    conectado → {"modelId":528, "label":"unknown (id 528)", "task":null, "dpi":null}
+
+Model 528 has been in `MODEL_IDS` since `e42d94e`. A driver that answers "unknown" to it is
+**older than that commit** — and therefore older than `288b6ae`, nine minutes later, which
+is what added the `density` option at all. The tab had been open across the deploy, so it
+was still running the driver it loaded at page load (the `?t=` cache-buster in
+`demo/index.html` is resolved once, when the page loads — it cannot help a tab nobody
+reloaded). **That driver ignored `{ density: d }` and sent the model's 3 five times.**
+
+Five identical labels, because five identical labels were printed.
+
+Two lessons worth more than the density answer:
+
+- **A stale tab does not fail; it succeeds at being slightly old.** Nothing errored. The
+  new option was silently dropped, and the missing effect got attributed to the printer —
+  a hardware conclusion drawn from a caching bug. The version was on screen in the log
+  (`[demo] loaded Niimbot driver version:`) and in the tab title the entire time. It is now
+  also a badge next to the demo's `<h1>`, because a fact you must remember to look up is
+  a fact you look up after you need it.
+- **When a measurement disagrees with the code you just wrote, first prove the code is the
+  code that ran.** Cheaper than every hypothesis about the hardware, and here it was the
+  answer.
+
+**Still unmeasured: what density does to the paper.** That needs a target that can show it —
+hairlines, small text, a halftone ramp — not a black rectangle, and printed by a tab that
+has actually been reloaded.

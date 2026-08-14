@@ -7,6 +7,8 @@
   <style>
     body { font-family: system-ui, sans-serif; max-width: 720px; margin: 2rem auto; padding: 0 1rem; }
     h1 { font-size: 1.4rem; }
+    #drv { font-size: .75rem; font-weight: normal; color: #555; vertical-align: middle;
+           border: 1px solid #bbb; border-radius: 6px; padding: 1px 6px; }
     label { display: inline-block; margin: .4rem .6rem .4rem 0; }
     select, input { padding: .3rem; }
     button { padding: .6rem 1rem; font-size: 1rem; cursor: pointer; }
@@ -71,7 +73,7 @@
   </style>
 </head>
 <body>
-  <h1>niimbot — print demo</h1>
+  <h1>niimbot — print demo <span id="drv" title="driver version actually loaded in this tab"></span></h1>
   <p>Prints a <strong>test label</strong> (frame + diagonals + text) straight
      from the browser via Web Bluetooth. Requires <strong>Chrome/Edge</strong>.</p>
 
@@ -246,6 +248,13 @@
 
     document.title = "niimbot demo — driver " + (Niimbot.VERSION || "?");
     console.log("[demo] loaded Niimbot driver version:", Niimbot.VERSION);
+    // ON SCREEN, not just in the title and the log. A tab left open across a deploy
+    // keeps running the driver it loaded (the ?t= cache-buster is resolved once, at
+    // page load), and a stale tab fails by being SUBTLY OLD, not by breaking: on
+    // 2026-08-14 one silently ignored the brand-new `density` option and printed five
+    // identical labels, which was then explained as a printer behaviour. The version
+    // was in the log the whole time. Costs a glance now.
+    $("drv").textContent = "v" + (Niimbot.VERSION || "?");
 
     // Both controls exist so a mobile tester can drive them without a console.
     // DEBUG starts off on purpose: its packet dump buries the `writeMode=` line

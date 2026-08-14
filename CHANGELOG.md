@@ -5,6 +5,20 @@ All notable changes to this project are documented here. The format is based on
 [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
+### Added
+- **The demo shows which driver version it is actually running**, as a badge next to the
+  title (it was already in the tab title and the console, where nobody looks). A tab left
+  open across a deploy keeps the driver it loaded — the `?t=` cache-buster is resolved at
+  page load and cannot help a page nobody reloaded — and a stale tab does not fail, it
+  succeeds at being slightly old. On 2026-08-14 one silently ignored the just-shipped
+  `density` option, printed five identical labels, and the missing effect was very nearly
+  written up as printer behaviour.
+- **`0x40[0x01]` → `0x41` is the density, and it reads back what you set** — measured on a
+  D11_H (`03` → set 1 → `01` → set 5 → `05` → set 3 → `03`), not taken on faith from an
+  enum. That makes the density round-trip checkable from the console with `probe()` and no
+  labels at all; see `docs/NOTES.md`. What density does *to the paper* is still unmeasured —
+  it needs a target that can show it (hairlines, small text, a halftone ramp) rather than
+  the solid black that was tried first, since a fully burned dot cannot get blacker.
 
 ## [2.1.0] - 2026-08-13
 ### Fixed
