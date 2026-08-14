@@ -518,6 +518,38 @@ Two lessons worth more than the density answer:
   code that ran.** Cheaper than every hypothesis about the hardware, and here it was the
   answer.
 
-**Still unmeasured: what density does to the paper.** That needs a target that can show it —
-hairlines, small text, a halftone ramp — not a black rectangle, and printed by a tab that
-has actually been reloaded.
+### The printer applies it — the print gets SLOWER (2026-08-14)
+
+Second, independent confirmation, and this one is about the paper rather than a register.
+Timing the printer's own counter from `page 0` to `page 1`, same label, same tab, minutes
+apart:
+
+    density 1   171 image rows   1288 ms
+    density 3   182 image rows   1350 ms
+    density 5   179 image rows   1592 ms
+
+Monotonic, and **the content does not explain it**: density 3 sends *more* rows than 5 and
+still finishes sooner. More heat means more dwell per line, so the head runs slower. Whatever
+`0x21` does, it reaches the mechanism.
+
+### Designing the target: at 300 dpi a pixel is 0.085 mm, and screen intuition is wrong
+
+The first sensitive target was useless too, for a reason worth writing down because it is
+pure arithmetic:
+
+- **Text.** `px = pt ÷ 72 × 300`. So 8 pt is **33 px**, not 8. Asking for `8px sans-serif`
+  produced **2 pt** type — printed, legible under a lens, useless to compare.
+- **Line pairs.** 1 px on / 1 px off at 300 dpi is **150 lp/in**. The head cannot resolve it
+  and neither can an eye at 12 mm. Three test blocks came out as three flat grey bars — the
+  pattern was below the printer's resolution, which says nothing about density.
+
+**The target that works is a step wedge in both polarities:** bars of 1, 2, 3, 4, 6, 8 px,
+once black-on-white and once knocked out white-on-black, plus the same 8 pt word set solid
+and reversed. Reversed detail is the sensitive half — extra heat spreads the dot and *closes*
+white gaps, so the reading is a count ("at density 5 the 1 px and 2 px white bars are gone"),
+not an impression of darkness. A 15 × 30 mm label fits six steps of each with room for a
+heading.
+
+**Still unmeasured: what density does to the paper.** Two register-level and one timing-level
+confirmations say the printer honours it; nobody has yet compared two labels and named the
+difference.
