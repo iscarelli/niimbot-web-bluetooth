@@ -141,12 +141,18 @@ The image must be exactly `w_px × h_px`. The driver thresholds it to 1-bit
 
 ### API
 
-- `Niimbot.printImage(url, { model, size, copies, offsetY, onProgress })` — print one
-  image. **`copies`** (default 1) prints N identical labels from a **single** upload
+- `Niimbot.printImage(url, { model, size, copies, density, offsetY, onProgress })` — print
+  one image. **`copies`** (default 1) prints N identical labels from a **single** upload
   (the printer repeats the image internally) — far faster than re-sending it.
   **`offsetY`** overrides `size.offset_y_px` to nudge the print down (px, feed axis).
-- `Niimbot.printBatch([url1, url2, …], { model, size, onProgress })` — N *distinct*
-  labels in one continuous job (one upload each, streamed back-to-back, no retract).
+- `Niimbot.printBatch([url1, url2, …], { model, size, density, onProgress })` — N
+  *distinct* labels in one continuous job (one upload each, streamed back-to-back, no
+  retract).
+- **`density`** (1–5, the scale the official NIIMBOT app uses) overrides the model's
+  default from `registry.json`. Validated **before the printer is touched**: an
+  out-of-range value throws and nothing is written, because this is the one setting
+  that controls how hard the printhead burns. Whether every model accepts all five
+  values is not established here — all four ship with a default of 3.
 - **Both reject when the printer did not confirm the job** — a page left unacknowledged,
   or the printed-page counter never reaching the total within `Niimbot.PAGE_WAIT_MS`
   (default 25 000). The error names what stalled and where. Through 1.4.0 they resolved

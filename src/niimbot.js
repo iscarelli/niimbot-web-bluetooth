@@ -788,9 +788,30 @@
   //         feeds it out — so a batch prints continuously, no retract between labels.
   function isB1(model) { return model && model.task === "b1"; }
 
-  async function beginJob(model, totalPages, onProgress) {
+  // Print density, 1–5, the same scale the official NIIMBOT app exposes. It is a real
+  // print parameter — the same label wants more heat on some stock than on others — so
+  // it belongs per JOB, not baked into the model. `opts.density` wins; `model.density`
+  // from registry.json is the fallback.
+  //
+  // VALIDATED, not passed through: an out-of-range byte goes to the printhead, and this
+  // is the one setting in the driver that controls how hard it burns. Refusing loudly
+  // beats discovering the limit on hardware.
+  //
+  // ⚠ 1–5 is the range the official app offers. Whether every model accepts all five is
+  // NOT established here — nothing in this repo has measured a per-model maximum, and
+  // the registry gives all four models the same default of 3.
+  function densityFor(model, opts) {
+    const raw = (opts && opts.density != null) ? opts.density : (model && model.density);
+    const d = Number(raw);
+    if (!Number.isInteger(d) || d < 1 || d > 5) {
+      throw new Error(`density must be an integer 1–5 (got ${JSON.stringify(raw)}) — the scale the official app uses`);
+    }
+    return d;
+  }
+
+  async function beginJob(model, totalPages, onProgress, density) {
     onProgress && onProgress("configuring…");
-    await sendWait(0x21, [model.density], 0x31, 1000);                       // SetDensity
+    await sendWait(0x21, [density], 0x31, 1000);                             // SetDensity
     await sendWait(0x23, [model.label_type], 0x33, 1000);                   // SetLabelType
     const n = Math.max(1, totalPages | 0);
     const start = isB1(model)
@@ -894,13 +915,14 @@
     opts = opts || {};
     const { model, size, onProgress } = opts;
     const copies = Math.max(1, opts.copies | 0);
+    const density = densityFor(model, opts);   // validate BEFORE touching the printer
     onProgress && onProgress("connecting…");
     await connect(model);
     assertSelection(model, size);
     const offsetY = opts.offsetY != null ? opts.offsetY : (size.offset_y_px || 0);
     const { buf, stride } = await imageToPacked(url, size.w_px, size.h_px, offsetY);
     _t0 = Date.now(); _lastPage = -1;                                        // timing trace (DEBUG)
-    await beginJob(model, copies, onProgress);
+    await beginJob(model, copies, onProgress, density);
     tlog(`job started (${copies} cop${copies > 1 ? "ies" : "y"}, ${size.w_px}×${size.h_px}, stride ${stride})`);
     const acked = await sendPagePacked(model, size, buf, stride, copies, onProgress);
     // Only claim the ack when there was one. The old line said "(PageEnd acked)"
@@ -925,6 +947,7 @@
   async function printBatch(urls, opts) {
     opts = opts || {};
     const { model, size, onProgress } = opts;
+    const density = densityFor(model, opts);   // validate BEFORE touching the printer
     onProgress && onProgress("connecting…");
     await connect(model);
     assertSelection(model, size);
@@ -935,7 +958,7 @@
     // retract between. The B1 (protocol 3) supports this natively — printStart7b
     // with totalPages>1 parks the paper at the printhead after each PageEnd and only
     // feeds out on the final PrintEnd (verified against niimbluelib's B1PrintTask).
-    await beginJob(model, N, onProgress);
+    await beginJob(model, N, onProgress, density);
     tlog(`job started (${N} pages)`);
     // Anything that means "the printer stopped confirming" stops the loop. Sending more
     // pages into a printer that is not keeping up is how a batch ends up short AND

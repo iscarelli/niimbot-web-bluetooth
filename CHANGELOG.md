@@ -15,6 +15,15 @@ All notable changes to this project are documented here. The format is based on
   `acceptAllDevices` — the path a printer the registry does not know yet actually needs.
 
 ### Added
+- **`density` is a per-print option now (1–5), not a per-model constant.** The official
+  app exposes the same 1–5 scale; the driver had it hard-wired to whatever
+  `registry.json` said for the model, so a caller could not turn it up for stock that
+  needs more heat. `printImage`/`printBatch` take `density`, falling back to the model's
+  value. It is **validated before the printer is touched** — an out-of-range value throws
+  and *nothing* is written, asserted in `test/unconfirmed.test.js`, because this is the
+  one setting that controls how hard the printhead burns. Strings are accepted (`"4"`),
+  since an HTML `<select>` yields them. **Whether every model accepts all five values is
+  not established** — nothing here has measured a per-model maximum.
 - **The D11_H is registered — model only, deliberately no size yet.** Found by open
   discovery (it advertises `D11_H-…`), **model id 528, protocol 5**, and the `v4` command
   sequence prints on it: solid black came out on the first attempt, which is what

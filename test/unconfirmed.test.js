@@ -30,6 +30,7 @@ Object.defineProperty(globalThis, "navigator", {
 // ── Fake GATT ────────────────────────────────────────────────────────────────
 let notify = null;
 const writes = [];              // every command byte written, in order
+const payloads = [];            // { cmd, data } for the commands whose data matters
 let pageCounter = 0;            // what the fake printer reports as printed
 let ackPageEnd = true;          // whether 0xE3 is answered with 0xE4
 let advanceOnPageEnd = true;    // whether the counter moves when a page is buffered
@@ -50,6 +51,7 @@ function handle(bytes) {
   if (bytes[0] === 0x03) return;
   const cmd = bytes[2];
   writes.push(cmd);
+  payloads.push({ cmd, data: Array.from(bytes.slice(4, 4 + bytes[3])) });
   switch (cmd) {
     case 0xc1: break;                                  // connect
     case 0x40: answer(0x4f, [0x10, 0x01]); break;      // PrinterInfo → model 4097 (B1 Pro)
@@ -115,7 +117,7 @@ async function ok(name, fn) {
 }
 
 function reset({ ack = true, advance = true } = {}) {
-  writes.length = 0; pageCounter = 0; ackPageEnd = ack; advanceOnPageEnd = advance;
+  writes.length = 0; payloads.length = 0; pageCounter = 0; ackPageEnd = ack; advanceOnPageEnd = advance;
   gatt.connected = false;
 }
 const sent = (cmd) => writes.indexOf(cmd);
@@ -133,6 +135,41 @@ const sent = (cmd) => writes.indexOf(cmd);
     reset();
     await Niimbot.printImage(PNG, { model: MODEL, size: SIZE });
     assert.ok(sent(0xf3) >= 0);
+  });
+
+  // ── (dens) density: validated before the printer is touched, then sent ────
+  await ok("(dens) a valid density reaches the printer as SetDensity", async () => {
+    reset();
+    await Niimbot.printImage(PNG, { model: MODEL, size: SIZE, density: 5 });
+    const set = payloads.find((p) => p.cmd === 0x21);
+    assert.ok(set, "SetDensity (0x21) must be sent");
+    assert.deepEqual(set.data, [5], "the caller's density, not the model's default of 3");
+  });
+
+  await ok("(dens2) a string density works — an HTML <select> yields strings", async () => {
+    reset();
+    await Niimbot.printImage(PNG, { model: MODEL, size: SIZE, density: "4" });
+    assert.deepEqual(payloads.find((p) => p.cmd === 0x21).data, [4]);
+  });
+
+  await ok("(dens3) omitting it falls back to the model", async () => {
+    reset();
+    await Niimbot.printImage(PNG, { model: MODEL, size: SIZE });
+    assert.deepEqual(payloads.find((p) => p.cmd === 0x21).data, [MODEL.density]);
+  });
+
+  await ok("(dens4) an out-of-range density is refused BEFORE anything is written", async () => {
+    for (const bad of [0, 6, 3.5, NaN, -1]) {
+      reset();
+      let err = null;
+      try { await Niimbot.printBatch([PNG], { model: MODEL, size: SIZE, density: bad }); }
+      catch (e) { err = e; }
+      assert.ok(err, `density ${bad} must be refused`);
+      assert.match(err.message, /density must be an integer/);
+      // This is the point: the printhead controls how hard it burns, so a bad value
+      // must not reach a connected printer half-way through job setup.
+      assert.equal(writes.length, 0, `density ${bad}: nothing may be written to the printer`);
+    }
   });
 
   // ── (a) The counter never reaches the target ───────────────────────────────
