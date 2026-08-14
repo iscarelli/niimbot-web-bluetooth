@@ -48,10 +48,10 @@ function deliver(cmd, data) { notify && notify({ target: { value: frame(cmd, dat
 // What the fake answers to 0xDC / 0x1A for the case under test. `null` = stay silent,
 // which is how the driver's timeout paths get exercised.
 let reply = { heartbeat: null, rfid: null };
-// Low byte of the model id the fake reports: 0x01 → 4097 (B1 Pro, the model the
-// captures come from), 0x00 → 4096 (B1, never captured — used to prove the hardware
-// claim does NOT leak to other models).
-let modelIdLow = 0x01;
+// The model id the fake reports. 4097 = B1 Pro (where the heartbeat captures come
+// from), 4096 = B1 (never captured — used to prove the hardware claim does NOT leak),
+// 4608 = M2-H (where the ribbon A/B was run). Sent big-endian, as the printer does.
+let modelId = 4097;
 
 // Answered synchronously inside the write, exactly as in pacing.test.js.
 function handle(bytes) {
@@ -60,10 +60,13 @@ function handle(bytes) {
   if (cmd === 0xa5) {                          // PrinterStatusData → protocol 5
     const d = new Array(13).fill(0); d[11] = 3; d[12] = 5;
     deliver(0xb5, d);
-  } else if (cmd === 0x40 && sub === 0x08) {   // PrinterModelId; 4097 = B1 Pro, 4096 = B1
-    deliver(0x48, [0x10, modelIdLow]);         // 4097 → task "v4" → connect runs NO handshake
+  } else if (cmd === 0x40 && sub === 0x08) {   // PrinterModelId
+    deliver(0x48, [(modelId >> 8) & 0xff, modelId & 0xff]);
   } else if (cmd === 0x40) {
-    deliver(0x48, [0x00]);
+    // The info reads answer with opcode 0x40+sub (observed on a real M2-H handshake:
+    // 40 0b → 4b, 40 0d → 4d, 40 0a → 4a …). Answering generically keeps the b1
+    // handshake from sitting through eight timeouts.
+    deliver(0x40 + sub, [0x00]);
   } else if (cmd === 0xdc) {                   // Heartbeat
     if (reply.heartbeat) deliver(reply.heartbeat.cmd, reply.heartbeat.data);
   } else if (cmd === 0x1a) {                   // RfidInfo
@@ -151,12 +154,15 @@ const bytes = (u8) => Array.from(u8 || []);
   const HB_EXPECT = (temp, lid, paper, tag) => ({
     layout: "advanced2/13", chargeLevel: 0x50, temp,
     lidClosed: lid, paperInserted: paper, paperRfidSuccess: tag,
+    // false in all six: the B1 Pro is direct-thermal and has no ribbon slot. Agreeing
+    // with a printer that HAS no ribbon cannot confirm the offset — hence inferred below.
+    ribbonInserted: false,
   });
   // Trust is per field: three booleans confirmed on hardware, temp seen to move but
   // with an unverified unit, chargeLevel never varied at all.
   const HB_EV = {
     lidClosed: "observed", paperInserted: "observed", paperRfidSuccess: "observed",
-    temp: "varies", chargeLevel: "inferred",
+    temp: "varies", chargeLevel: "inferred", ribbonInserted: "inferred",
   };
 
   const CAPTURES = [
@@ -175,10 +181,17 @@ const bytes = (u8) => Array.from(u8 || []);
     assert.deepEqual(st.decoded.heartbeat, expect, `${name}: decoded heartbeat`);
     assert.deepEqual(st.decoded.evidence.heartbeat, HB_EV, `${name}: per-field evidence`);
     assert.equal(st.confidence, "validated", `${name}: hardware-confirmed fields make confidence 'validated'`);
-    // A field that is confidently wrong is worse than an absent one: 1.4.0 reported
-    // ribbonInserted:true on this direct-thermal printer. It must not come back.
-    for (const gone of ["ribbonInserted", "ribbonRfidSuccess"]) {
-      assert.equal(gone in st.decoded.heartbeat, false, `${name}: ${gone} must not be decoded (B1 Pro has no ribbon)`);
+    // `ribbonInserted` DID come back, at a different offset, once an A/B on a ribbon
+    // printer established where it lives (see the r1 case below). Here it must read
+    // FALSE — this printer has no ribbon slot — and it must stay `inferred`, because
+    // agreeing with a printer that has no ribbon cannot confirm an offset.
+    assert.equal(st.decoded.heartbeat.ribbonInserted, false, `${name}: a direct-thermal B1 Pro has no ribbon`);
+    assert.equal(st.decoded.evidence.heartbeat.ribbonInserted, "inferred", `${name}: no hardware claim on this layout`);
+    // `ribbonRfidSuccess` did NOT come back and must not: 1.4.0 reported it from an
+    // unchecked offset, and unlike ribbonInserted nothing has since been measured for
+    // it. A field that is confidently wrong is worse than an absent one.
+    for (const gone of ["ribbonRfidSuccess"]) {
+      assert.equal(gone in st.decoded.heartbeat, false, `${name}: ${gone} must not be decoded (never measured)`);
       assert.equal(gone in st.decoded.evidence.heartbeat, false, `${name}: ${gone} must not be marked either`);
     }
     // idx1 was once read as an error-code nibble (0 none / 8 lid open / 3 out of paper).
@@ -279,11 +292,11 @@ const bytes = (u8) => Array.from(u8 || []);
   assert.deepEqual(st.decoded.heartbeat, {
     layout: "advanced2/9",
     chargeLevel: 3, temp: 0x19,
-    lidClosed: true, paperInserted: true, paperRfidSuccess: true,
+    lidClosed: true, paperInserted: true, paperRfidSuccess: true, ribbonInserted: false,
   }, "Advanced2 heartbeat fields");
   assert.deepEqual(st.decoded.evidence.heartbeat, {
     lidClosed: "inferred", paperInserted: "inferred", paperRfidSuccess: "inferred",
-    temp: "inferred", chargeLevel: "inferred",
+    temp: "inferred", chargeLevel: "inferred", ribbonInserted: "inferred",
   }, "a length we never captured is inferred right across");
   assert.deepEqual(st.decoded.rfid, {
     tagPresent: true, uuid: "0102030405060708", barCode: "AB", serialNumber: "S1",
@@ -341,6 +354,45 @@ const bytes = (u8) => Array.from(u8 || []);
   assert.equal(st.confidence, "inferred");
   console.log("ok  (c) missing RFID answer is normal, not an error");
 
+  // ── (r1) ribbonInserted, from a controlled A/B on ONE printer ─────────────
+  // RECORDED. The first two payloads are an M2-H ten seconds apart with nothing changed
+  // but the ribbon; the third is the B1 Pro, which is direct-thermal and has no ribbon
+  // slot. This is the evidence that put the field back after 2.0.0 removed it from a
+  // different, unchecked offset — and the reason it is scoped to model 4608.
+  const RIBBON_IN = [0x1f, 0x5d, 0x04, 0x4b, 0x00, 0x00, 0x01, 0x01, 0x00, 0x00, 0x00];
+  const RIBBON_OUT = [0x1f, 0x5e, 0x04, 0x4b, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00];
+
+  await Niimbot.disconnect();
+  modelId = 4608;                                        // M2-H — where the A/B was run
+  reply = { heartbeat: { cmd: 0xd9, data: RIBBON_IN }, rfid: null };
+  await Niimbot.connect({ name_prefixes: ["M2"], task: "b1" });
+  assert.equal(Niimbot.printer.modelId, 4608, "fake printer should identify as an M2-H");
+
+  st = await Niimbot.getStatus(FAST);
+  assert.equal(st.decoded.heartbeat.ribbonInserted, true, "ribbon fitted must read true");
+  assert.equal(st.decoded.evidence.heartbeat.ribbonInserted, "observed",
+    "the M2-H 11-byte layout is the one the A/B was run on, so it carries a hardware claim");
+
+  reply = { heartbeat: { cmd: 0xd9, data: RIBBON_OUT }, rfid: null };
+  st = await Niimbot.getStatus(FAST);
+  assert.equal(st.decoded.heartbeat.ribbonInserted, false, "same printer, ribbon removed, must read false");
+  assert.equal(st.decoded.evidence.heartbeat.ribbonInserted, "observed");
+
+  // The claim must NOT leak to another model that happens to answer with 11 bytes.
+  await Niimbot.disconnect();
+  modelId = 4096;                                        // B1 — never captured
+  reply = { heartbeat: { cmd: 0xd9, data: RIBBON_IN }, rfid: null };
+  await Niimbot.connect({ name_prefixes: ["B1"], task: "b1" });
+  st = await Niimbot.getStatus(FAST);
+  assert.equal(st.decoded.heartbeat.ribbonInserted, true, "the byte still decodes");
+  assert.equal(st.decoded.evidence.heartbeat.ribbonInserted, "inferred",
+    "but an uncaptured model gets no hardware claim, however suggestive the byte");
+
+  await Niimbot.disconnect();
+  modelId = 4097;                                        // back to the B1 Pro for what follows
+  await Niimbot.connect(MODEL);
+  console.log("ok  (r1) ribbonInserted tracks the ribbon (A/B on the M2-H; no leak to other models)");
+
   // ── (c'') A printer that goes FULLY quiet must not throw ──────────────────
   // Regression, hit on real hardware 2026-08-13: the heartbeat is requested with
   // wantResp = null ("accept any opcode"), and the timeout WARNING formatted that null
@@ -391,7 +443,7 @@ const bytes = (u8) => Array.from(u8 || []);
   // models, so the very same byte could mean the opposite on a B1 (4096) or M2-H
   // (4608). Identical bytes, different printer → still decoded, never "observed".
   await Niimbot.disconnect();
-  modelIdLow = 0x00;                                     // 4096 = B1, never captured here
+  modelId = 4096;                                        // B1, never captured here
   reply = { heartbeat: { cmd: 0xd9, data: C2 }, rfid: RFID5 };
   await Niimbot.connect(MODEL);
   assert.equal(Niimbot.printer.modelId, 4096, "fake printer should now identify as a B1");
@@ -399,7 +451,7 @@ const bytes = (u8) => Array.from(u8 || []);
   assert.equal(st.confidence, "inferred", "the same bytes from an uncaptured model must not be 'validated'");
   assert.deepEqual(st.decoded.evidence.heartbeat, {
     lidClosed: "inferred", paperInserted: "inferred", paperRfidSuccess: "inferred",
-    temp: "inferred", chargeLevel: "inferred",
+    temp: "inferred", chargeLevel: "inferred", ribbonInserted: "inferred",
   }, "no heartbeat field may be marked observed on a model we have never captured");
   assert.equal(st.decoded.evidence.rfid.usedPaper, "inferred", "nor may an RFID field");
   assert.equal(st.decoded.evidence.rfid.capacity, "inferred");

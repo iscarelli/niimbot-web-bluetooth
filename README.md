@@ -70,6 +70,29 @@ The app picks the printer by passing a **`model`** and **`size`** object (both f
   (384×240 @ 203 dpi) than on the B1 Pro (584×354 @ 300 dpi) — always pair a size with
   a model of the **same dpi**.
 
+  ⚠ **Same dpi is not enough — pair by MODEL.** The registry ships *three* 50×30 mm
+  entries and two of them are 300 dpi:
+
+  | id | model | `w_px` | why that width |
+  |---|---|---|---|
+  | `T50x30` | B1 Pro | 584 | the printable width used on that printer |
+  | `T50x30_m2h` | **M2-H** | **567** | a deliberate ~1.4 mm right margin — see below |
+  | `T50x30_b1` | B1 | 384 | 203 dpi |
+
+  Filtering only by dpi offers both 300 dpi entries for either printer, and picking the
+  wrong one is silent. **`w_px` is not "the printhead width"** — the driver sends it as
+  `W` in `SetPageSize`, the printer prints columns `0 … W-1`, and anything past the head
+  is dropped with no error. On the M2-H, 567 is not a head limit at all: that printer is
+  **thermal transfer (it uses a ribbon)**, the ribbon drifts slightly, and the narrower
+  width is a margin that absorbs the drift. Its head reaches at least 584 — solid black
+  at 584 printed edge to edge (measured 2026-08-13). Use `T50x30` there and you lose the
+  margin the number exists to provide; use it on a printer whose head really is narrower
+  and you lose the right edge of every label.
+
+  The safe pattern is the one the demo follows: call **`Niimbot.identify(model)`**, match
+  `Niimbot.printer.modelId` against `id` in `registry.json`, and offer only the sizes
+  belonging to that model.
+
 **Auto-identification.** The B1 and B1 Pro advertise the same BLE name (`B1…`), but
 the driver **does identify which is which**: on connect it asks the printer for its
 model id (`PrinterInfo 0x40[08]`) and protocol version (`PrinterStatusData 0xA5`) —

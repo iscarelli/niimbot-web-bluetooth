@@ -466,6 +466,11 @@
   // show 1 = OPEN — so widening `lidClosed` to another model could invert its meaning.
   const OBSERVED_MODEL_ID = 4097;
   const observedHere = () => !!(printerInfo && printerInfo.modelId === OBSERVED_MODEL_ID);
+  // The ribbon A/B was run on ONE printer, the M2-H. Scoping by payload length alone
+  // would hand a hardware claim to any other model that happens to answer with 11
+  // bytes — the exact leak the B1-Pro claims are already fenced against.
+  const RIBBON_MODEL_ID = 4608;
+  const ribbonObservedHere = () => !!(printerInfo && printerInfo.modelId === RIBBON_MODEL_ID);
 
   // niimbluelib abstraction.ts processHeartbeatAdvanced1: these model ids report the
   // lid byte inverted. None of MODEL_IDS is in it; kept so an unknown printer decodes
@@ -488,11 +493,24 @@
         layout: `advanced2/${n}`,
         chargeLevel: d[2], temp: d[3],
         lidClosed: d[4] === 0, paperInserted: d[5] === 0, paperRfidSuccess: d[6] !== 0,
+        ribbonInserted: d[7] === 1,
       };
       // Only the captured configuration carries a hardware claim; anything else falls
       // back to "inferred", which here means "extrapolated and never checked".
       const seen = observedHere() && n === 13;
       ev.lidClosed = ev.paperInserted = ev.paperRfidSuccess = seen ? OBSERVED : INFERRED;
+      // ribbonInserted is back, at a DIFFERENT offset from the one that was removed in
+      // 2.0.0. That removal was right: the old offset read `true` on a B1 Pro, which is
+      // direct-thermal and has no ribbon slot at all. d[7] is where it actually lives,
+      // and it was established by the only kind of evidence that settles this — an A/B
+      // on ONE printer, 10 s apart, with nothing changed but the ribbon:
+      //     M2-H, ribbon in:  1f 5d 04 4b 00 00 01 [01] 00 00 00
+      //     M2-H, ribbon out: 1f 5e 04 4b 00 00 01 [00] 00 00 00
+      // and consistent with the B1 Pro (no ribbon, d[7] = 00) across its six captures.
+      // OBSERVED only on the 11-byte layout that A/B was run on; on 13 bytes it agrees
+      // with a printer that HAS no ribbon, which cannot distinguish "absent" from
+      // "field means something else here", so it stays inferred there.
+      ev.ribbonInserted = (ribbonObservedHere() && n === 11) ? OBSERVED : INFERRED;
       // idx3 rose 0x48 idle → 0x49 before a job → 0x4a right after 3 labels, so it does
       // track something thermal. The UNIT is not settled: 72–74 is high for °C on a
       // lightly-used printhead. Hence "varies", not "observed".

@@ -5,7 +5,32 @@ All notable changes to this project are documented here. The format is based on
 [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
+### Added
+- **`getStatus().decoded.heartbeat.ribbonInserted` is back**, at a different offset from
+  the one 2.0.0 removed. That removal was right — the old offset read `true` on a
+  direct-thermal B1 Pro, which has no ribbon slot. `d[7]` is where the field actually
+  lives, established by the only evidence that settles such a thing: an **A/B on one
+  printer**, ten seconds apart, with nothing changed but the ribbon.
+
+      M2-H, ribbon in:  1f 5d 04 4b 00 00 01 [01] 00 00 00
+      M2-H, ribbon out: 1f 5e 04 4b 00 00 01 [00] 00 00 00
+
+  Consistent with the B1 Pro's six captures (no ribbon, `d[7] = 00`). Marked `observed`
+  **only on model 4608 with the 11-byte layout** — the printer and layout the A/B ran on.
+  Any other model decodes the byte but gets `inferred`, however suggestive it looks:
+  agreeing with a printer that *has* no ribbon cannot confirm an offset. Covered by
+  `test/status.test.js` (r1), which also asserts the claim does not leak.
+  **`ribbonRfidSuccess` did NOT come back** and the harness still forbids it: unlike
+  `ribbonInserted`, nothing has been measured for it.
+
 ### Changed
+- **README: pair a size with the MODEL, not just the dpi.** The registry ships two
+  300 dpi 50×30 entries — `T50x30` (584, B1 Pro) and `T50x30_m2h` (567, M2-H) — so a
+  caller filtering by dpi is offered both, and picking wrong is silent: the printer
+  prints columns `0 … W-1` and drops the rest with no error. Also states what 567
+  actually is, since the old note got it wrong: the M2-H is **thermal transfer (ribbon)**
+  and 567 is a deliberate ~1.4 mm margin for ribbon drift, not a printhead limit — its
+  head reaches at least 584 (solid black at 584 printed edge to edge, 2026-08-13).
 - **Corrected a comment that promised continuous streaming.** The header block said a
   batch "streams continuously with no stop between labels". Measured on a B1 Pro,
   2026-08-13, with the packet trace: in `"paced"` a dense page takes ~3 s to send
