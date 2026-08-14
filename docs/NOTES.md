@@ -258,3 +258,52 @@ run the reverse held. A pause between labels means the driver is behind; nothing
 writes-per-page. Reducing writes (frame bundling) attacks it directly; lowering
 `PACE_MS` attacks the safety margin instead. See the note above on `MODEL_IDS`, where
 bundling is off for the B1 Pro for want of testing.
+
+## M2-H: first real capture (2026-08-13)
+
+Detected and printed correctly on the first try: `identified Niimbot M2-H (id=4608,
+proto=4, task=b1, name="M2_H-H107060027")`, `bundle=true`, `effective=paced` (on a
+`mac=true` host). A 5-label light batch printed with every `0xE3` acked and the counter
+running 0 → 5.
+
+**Bundling works, and this is the first time it ever ran.** It is enabled only for the
+B1 (4096) and M2-H (4608), and neither had been exercised. The packet log cannot show it
+— `logTx` counts FRAMES, not BLE writes — but the clock can:
+
+| | ms per row-frame, light label |
+|---|---|
+| B1 Pro, `bundle=false` | 11.5 |
+| M2-H, `bundle=true` | **5.7** |
+
+50 frames in 287 ms. One write per frame at `PACE_MS = 10` would cost ~500 ms, so ~28
+writes carried 50 frames — about 1.8 frames per write, and the send time halves.
+
+**Heartbeat and status use DIFFERENT lengths from the B1 Pro**, which is why
+`src/niimbot.js` refuses to extend its hardware claim past model 4097:
+
+    heartbeat 0xD9:  B1 Pro 13 bytes   ·  M2-H 11 bytes
+    status    0xB3:  B1 Pro 11 bytes   ·  M2-H 10 bytes
+
+Captured M2-H heartbeats (physical state at capture NOT recorded — see below):
+
+    1f 6c 04 49 00 00 01 01 00 00 00
+    1f 6e 04 4a 00 00 01 01 00 00 00
+
+`decodeHeartbeat` accepts any `0xD9` of ≥ 9 bytes, so it produces `layout:
+"advanced2/11"` — but marks every field `inferred`, because `observed` requires
+`n === 13`. That restraint looks right here: applying the 13-byte offsets gives
+`chargeLevel` = 4 on the M2-H against 80 on every B1 Pro capture. An 80 → 4 swing in the
+same slot is as easily a different layout as a different battery, and nothing here
+separates the two.
+
+**What would make these bytes usable:** the same discipline the B1 Pro captures had —
+record the raw bytes *alongside the physical state* (lid open/closed, roll in/out, tag
+present/absent). Three `Read status` calls with the lid and roll deliberately varied
+would do it, and cost no labels.
+
+**RFID on this printer's rolls:** barcodes `6977031213447` and `6977031213522`, both
+13-digit, both maker prefix `6977031` — the same prefix as the 25×38 blue flag, and a
+different one from the 30×45 family. Their payload is 44 bytes and ends after
+`consumablesType`, i.e. **no `capacity` field** (the B1 Pro's rolls carried one). The
+driver already treats capacity as optional (`if (left() === 2)`), so this is a
+confirmation of that guard rather than a surprise.
