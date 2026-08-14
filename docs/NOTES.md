@@ -61,7 +61,7 @@ itself carries **no colour field**: it is fully accounted for by
 `uuid · barCode · serial · printLimit · usedPaper · consumablesType · capacity`
 (`src/niimbot.js:464-465`), with zero unparsed bytes.
 
-## Two contradictions about printhead width (unresolved)
+## Printhead width: one contradiction resolved, one still open
 
 `docs/protocol-v4.md` § *Label geometry* says to set `W` = **printhead width, not label
 width**, and gives the B1 Pro's as **567 px**. Both halves conflict with what is
@@ -73,13 +73,24 @@ elsewhere in the repo:
 2. `registry.json` uses **584** for the B1 Pro (`T50x30`) and attributes **567** to the
    **M2-H** (`T50x30_m2h`, with a `_note` saying so). The prose gives 567 to the B1 Pro.
 
-Only one of 567/584 is the B1 Pro's real head width, and the difference decides whether a
-full-width label silently loses its right edge — the failure would be invisible on the
-50 × 30 rolls in use, which keep an unprinted right margin anyway.
+**RESOLVED for the M2-H (2026-08-13): 567 was never a printhead width.** Solid black at
+**584** printed **edge to edge** on the M2-H, so its head reaches at least 584. The real
+reason for 567, from the maintainer: **the M2-H is a THERMAL TRANSFER printer — it uses a
+ribbon** (unlike the direct-thermal B1 Pro), the ribbon drifts slightly, and 567 is a
+deliberate ~1.4 mm right margin that absorbs the drift. Someone later wrote "printhead
+width" beside the number as an explanation, and that invented explanation then spread.
+Both `_note` fields in `registry.json` are corrected; the **value 567 stays**, because
+the value was right for a reason nobody had written down.
 
-**Cheap physical test:** print a page that is solid black across the full `w_px` at 584 on
-a B1 Pro and look at the right edge. Clean edge ⇒ the head is ≥ 584. A strip missing on
-the right ⇒ the head is 567 and `registry.json` is over-wide. Tracked on Vikunja.
+**STILL OPEN for the B1 Pro.** `docs/protocol-v4.md` attributes 567 to the *B1 Pro*, and
+that attribution now has no support at all: the only 567 in this project traces to the
+M2-H's ribbon margin. The same solid-black test has not been run on a B1 Pro, so its head
+width remains unmeasured. Tracked on Vikunja (#970).
+
+**Lesson worth more than the fix:** a correct number carried a wrong explanation for
+months, and the explanation was the part that got reused. When a constant exists for a
+physical reason, write the reason next to it — otherwise someone reconstructs a plausible
+one and it becomes doctrine.
 
 ## Cable flags: `h_px` is the area you want to print, not the label's full pitch
 
@@ -307,3 +318,25 @@ different one from the 30×45 family. Their payload is 44 bytes and ends after
 `consumablesType`, i.e. **no `capacity` field** (the B1 Pro's rolls carried one). The
 driver already treats capacity as optional (`if (left() === 2)`), so this is a
 confirmation of that guard rather than a surprise.
+
+## Lead: `ribbonInserted` may be real after all — d[7] tracks the ribbon
+
+`ribbonInserted` and `ribbonRfidSuccess` were removed from `getStatus().decoded` earlier
+on 2026-08-13 because they read `true` on a B1 Pro, which is direct-thermal and has no
+ribbon at all. That removal stands: the field as decoded was confidently wrong.
+
+But the M2-H **does** use a ribbon, and the two captures differ in exactly one plausible
+place:
+
+    idx      0   1   2   3   4   5   6   7   8   9  10  11  12
+    B1 Pro  1f  3e  50  4a  00  00  01  00  00  00  00  00  00     no ribbon
+    M2-H    1f  6b  04  49  00  00  01  01  00  00  00             has ribbon
+
+`d[7]` is `00` on the printer without a ribbon and `01` on the printer with one. One
+sample each, and the two layouts differ in length (13 vs 11 bytes) so the offsets may not
+even correspond — this is a lead, not a decode, and nothing in the driver acts on it.
+
+**The test that would settle it costs no labels:** on the M2-H, *Read status* with the
+ribbon fitted, then **take the ribbon out** and *Read status* again. If `d[7]` goes
+`01 → 00`, the field is real and belongs back in `decoded` — scoped to models that have a
+ribbon, and marked `observed` only for those actually captured.

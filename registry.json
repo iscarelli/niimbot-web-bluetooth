@@ -24,7 +24,7 @@
       "name_prefixes": ["B1"]
     },
     "m2h": {
-      "_note": "Niimbot M2-H — 300 dpi (printhead 567 px), model id 4608, protocol v4, advertised name e.g. 'M2_H-H107060027'. Validated on hardware: identifies and prints. Uses the b1 command sequence (per niimbluelib) with fast unacked writes (B1-Pro-class). The v4 sequence was tested too — it also prints but gives no better distinct-label cadence, so we keep b1. The small pause between distinct labels at 300 dpi is mechanical; for identical labels use copies (continuous).",
+      "_note": "Niimbot M2-H — 300 dpi, model id 4608, protocol v4, advertised name e.g. 'M2_H-H107060027'. Validated on hardware: identifies and prints (5-label batch and single labels, 2026-08-13). Uses the b1 command sequence (per niimbluelib) with frame bundling. w_px 567 is NOT the printhead width — an earlier note said so and it is wrong: solid black at 584 printed edge to edge on this printer (2026-08-13), so the head reaches at least 584. 567 is a deliberate ~1.4 mm right margin, because THIS MODEL USES A RIBBON (thermal transfer, unlike the direct-thermal B1 Pro) and the ribbon tends to drift slightly; the margin absorbs that. Keep it unless you are testing the head itself.",
       "label": "Niimbot M2-H",
       "id": 4608,
       "dpi": 300,
@@ -59,7 +59,7 @@
       "dpi": 203
     },
     "T50x30_m2h": {
-      "_note": "M2-H 50×30 @ 300 dpi. w_px = printhead width (567 ≈ 48 mm, so a 50 mm label keeps a ~2 mm right margin, like the B1); h_px = 30 mm × 11.81.",
+      "_note": "M2-H 50×30 @ 300 dpi. w_px 567 is a deliberate right margin for RIBBON DRIFT, not the printhead width — the head reaches at least 584 (solid black at 584 printed edge to edge, 2026-08-13). h_px = 30 mm × 11.81. See the m2h model note.",
       "label": "50 × 30 mm (M2-H)",
       "code": "T50*30",
       "w_mm": 50,
