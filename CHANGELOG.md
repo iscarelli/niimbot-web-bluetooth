@@ -5,6 +5,11 @@ All notable changes to this project are documented here. The format is based on
 [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
+### Changed
+- **T-011**: bumped the release workflow's `actions/checkout` and `actions/setup-node`
+  pins from `@v4` to `@v7` (`.github/workflows/release.yml`), ahead of GitHub retiring
+  the Node 20 runtime those majors declare. Syntax-verified only — the workflow only
+  runs on a `v*.*.*` tag push, so this is unverified end-to-end until the next release.
 
 ## [2.3.1] - 2026-08-14
 ### Fixed
