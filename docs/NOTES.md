@@ -369,6 +369,38 @@ Already known from the handshake: `40[08]`=model id, `40[09]`=`01 36`, `40[0a]`=
 `40[0a]` — all of which the driver or niimbluelib call charge level. It did **not**
 change when the ribbon was removed entirely, so it is not the ribbon.
 
-**Still unanswered: where the remaining-ribbon figure comes from.** Everything above is a
-single snapshot; a snapshot cannot identify a level. The diff against a fresh ribbon is
-the missing half, and until it exists nothing here should be named.
+### Remaining ribbon is NOT readable here — negative result, 2026-08-13
+
+The official NIIMBOT app shows how much ribbon is left, so the information exists
+somewhere. It is not in anything this driver can ask for.
+
+The full sweep was run twice on the same M2-H, minutes apart, with **two different
+ribbons** — one roughly half spent, one brand new:
+
+    0x1A[01..05]   RfidInfo (all parameters)
+    0x40[00..20]   the whole info sub-code space
+    0xDC[01..05]   every heartbeat variant that answers
+    0xA5           PrinterStatusData
+
+**Every response was byte-identical between the two ribbons.** The only bytes that
+differed are `d[1]` and `d[3]` of the heartbeat, and neither is usable: both drift on
+their own — `d[1]` changed with nothing touched at all, and `d[3]` moved `4b → 4c`
+between two reads **60 ms apart in one session**.
+
+So a caller can know *whether* a ribbon is fitted (`getStatus().decoded.heartbeat
+.ribbonInserted`) but not *how much is left*, and no amount of re-probing this space will
+change that.
+
+**Scope of the negative.** It covers the commands that are safe to sweep — reads. The
+top-level opcode space was deliberately NOT swept: it contains commands that print, feed,
+write RFID and update firmware, and probing those blind risks the printer. So this rules
+out the readable space, not the protocol.
+
+**Where it could still be**, none of it verified: the app may compute the figure itself
+from accumulated usage rather than reading it; or it may use a transport or command class
+not reachable from Web Bluetooth. Both are guesses, and neither is worth acting on
+without evidence.
+
+**Why this is written down.** A negative result that nobody records gets re-derived. This
+sweep cost an evening; the next person to wonder where ribbon level lives should read
+this instead of repeating it.

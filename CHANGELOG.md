@@ -16,6 +16,11 @@ All notable changes to this project are documented here. The format is based on
   from something nobody here asks for, and asking is the only way to find it.
   Nothing in the driver calls it. **Sweep sub-codes, not top-level opcodes:** this
   protocol has commands that print, feed, write RFID and update firmware.
+  It earned its keep immediately, with a **negative result**: the same sweep run with
+  a half-spent ribbon and a new one is byte-identical across `0x1A[01..05]`,
+  `0x40[00..20]`, `0xDC[01..05]` and `0xA5`. Remaining ribbon is not readable from
+  this driver — see `docs/NOTES.md`. A caller can know whether a ribbon is fitted,
+  not how much is left.
 - **`getStatus().decoded.heartbeat.ribbonInserted` is back**, at a different offset from
   the one 2.0.0 removed. That removal was right — the old offset read `true` on a
   direct-thermal B1 Pro, which has no ribbon slot. `d[7]` is where the field actually
