@@ -5,6 +5,15 @@ All notable changes to this project are documented here. The format is based on
 [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
+### Fixed
+- **Connecting with no `name_prefixes` now discovers instead of finding nothing.** It
+  fell back to `{ services: [SVC_UUID] }`, which looks like a discovery filter and is
+  not: it matches the service UUID **as advertised**, and these printers do not advertise
+  it — the service only appears after connecting. Measured 2026-08-13: the chooser came
+  up empty for a D11 *and* for a B1 Pro, a printer this driver prints with daily. A
+  filter that cannot find hardware we own is a dead end, so no prefix now means
+  `acceptAllDevices` — the path a printer the registry does not know yet actually needs.
+
 ### Added
 - **`Niimbot.probe(cmd, data, timeoutMs)` — a diagnostic, not API.** Sends one command
   and returns whatever answers, accepting any response opcode. Added while hunting where

@@ -351,12 +351,23 @@
     logMsg(`Niimbot ${VERSION} — connecting (task=${(model && model.task) || "?"})`);
     if (!navigator.bluetooth) throw new Error("Web Bluetooth unavailable (use Chrome/Edge over HTTPS).");
     const prefixes = (model && model.name_prefixes) || [];
-    // Filter the chooser by advertised-name prefix (known per model). Empty → fall
-    // back to the service UUID. (acceptAllDevices was only for first-time discovery
-    // of an unknown model; we know the names now, so keep the chooser clean.)
-    const filters = prefixes.length
-      ? prefixes.map((p) => ({ namePrefix: p })) : [{ services: [SVC_UUID] }];
-    device = await navigator.bluetooth.requestDevice({ filters, optionalServices: [SVC_UUID] });
+    // Filter the chooser by advertised-name prefix (known per model).
+    //
+    // `acceptAllDevices: true` is the DISCOVERY path, for a printer this registry does
+    // not know yet — its name prefix is exactly what you are trying to find out. It was
+    // removed once as "we know the names now", which was true only for the models in the
+    // registry; bringing up a new one had no way in.
+    //
+    // NO PREFIX ⇒ discovery. It used to fall back to `{ services: [SVC_UUID] }`, which
+    // LOOKS like a discovery path and is not: that filter matches the service UUID **as
+    // advertised**, and these printers do not advertise it — the service only becomes
+    // visible after connecting. Measured 2026-08-13: with that filter the chooser was
+    // empty for a D11 *and* for a B1 Pro, a printer this driver prints with every day.
+    // A filter that cannot find hardware we own is not a filter, it is a dead end.
+    const req = prefixes.length
+      ? { filters: prefixes.map((p) => ({ namePrefix: p })), optionalServices: [SVC_UUID] }
+      : { acceptAllDevices: true, optionalServices: [SVC_UUID] };
+    device = await navigator.bluetooth.requestDevice(req);
     logMsg(`device name: "${device.name || "?"}"`);
     const server = await device.gatt.connect();
     const svc = await server.getPrimaryService(SVC_UUID);
