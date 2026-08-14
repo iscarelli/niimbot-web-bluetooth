@@ -131,9 +131,32 @@
   // contains "like Mac OS X", and iOS is CoreBluetooth as well. The consequence is that
   // an iPhone has only ever printed PACED — whether it needs to is unmeasured. See the
   // write-mode override below, which is what makes that measurable.
+  // MAC_SOURCE records WHICH input decided IS_MAC, and it is printed on the connect
+  // line. Reason: on 2026-08-13 the same Chrome on the same Mac logged `mac=true` in one
+  // session and `mac=false` in another, and `mac=false` alone could not say why — the
+  // value is computed once at load, so the difference had to be in what `navigator`
+  // reported (DevTools device emulation overrides BOTH `userAgentData.platform` and the
+  // user agent, for instance). A boolean with no provenance turned that into hours of
+  // guessing about which machine was used. Never remove this from the log line.
+  let MAC_SOURCE = "?";
   const IS_MAC = (() => {
-    try { if (navigator.userAgentData && navigator.userAgentData.platform) return navigator.userAgentData.platform === "macOS"; } catch (e) {}
-    return /Mac/i.test((navigator.platform || "") + " " + (navigator.userAgent || ""));
+    try {
+      if (navigator.userAgentData && navigator.userAgentData.platform) {
+        // Report `platform` alongside it even though the decision ignores it: when the
+        // two DISAGREE (uaData="Windows" while platform="MacIntel") something is
+        // rewriting the identity — device emulation, a privacy extension, a spoofed UA
+        // — and that contradiction is the single most useful thing this line can show.
+        MAC_SOURCE = `uaData="${navigator.userAgentData.platform}" platform="${navigator.platform || ""}"`;
+        return navigator.userAgentData.platform === "macOS";
+      }
+    } catch (e) {}
+    const plat = navigator.platform || "";
+    const ua = navigator.userAgent || "";
+    const hit = /Mac/i.test(plat + " " + ua);
+    // Say which of the two matched: on iOS it is the UA ("like Mac OS X"), on macOS
+    // usually the platform ("MacIntel"). That distinction is the iOS/macOS tell.
+    MAC_SOURCE = `platform="${plat}"${hit ? (/Mac/i.test(plat) ? " matched:platform" : " matched:ua") : ""}`;
+    return hit;
   })();
   let writeMode = "fast";   // "fast" | "acked" | "paced" — as DETECTED at connect; the override below never overwrites it
   let PACE_MS = 10;         // gap (ms) between unacked writes so rows aren't dropped; runtime-tunable via Niimbot.PACE_MS
@@ -367,7 +390,7 @@
     // NOT DEBUG-gated: `effective=` is the answer to "which write path did this print
     // take?", and the previous wrong conclusion about iOS was reached precisely because
     // nobody could see it. One line per connect.
-    logAlways(`writeMode=${writeMode} override=${writeOverride || "auto"} effective=${effectiveWriteMode()} forcePacing=${writeOverride === "paced"} bundle=${_bundleAllowed} mac=${IS_MAC} pace=${PACE_MS} (task=${task || "?"}, model=${(meta && meta.label) || "?"}, write=${!!props.write}, writeNoResp=${!!props.writeWithoutResponse})`);
+    logAlways(`writeMode=${writeMode} override=${writeOverride || "auto"} effective=${effectiveWriteMode()} forcePacing=${writeOverride === "paced"} bundle=${_bundleAllowed} mac=${IS_MAC} [${MAC_SOURCE}] pace=${PACE_MS} (task=${task || "?"}, model=${(meta && meta.label) || "?"}, write=${!!props.write}, writeNoResp=${!!props.writeWithoutResponse})`);
     warnOverrideVsModel();   // now that the model is identified, an override that fights it is worth saying
     if (task === "b1") await b1Handshake();
   }

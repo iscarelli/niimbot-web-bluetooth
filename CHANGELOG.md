@@ -6,6 +6,16 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 ### Changed
+- **The connect line now says WHY `IS_MAC` decided what it decided.** It reads
+  `mac=false [uaData="Windows" platform="MacIntel"]` instead of a bare `mac=false`.
+  On 2026-08-13 the same Chrome on the same Mac logged `mac=true` in one session and
+  `mac=false` in another. `IS_MAC` is computed once at load, so the difference had to be
+  in what `navigator` reported — but the log printed only the conclusion, and working
+  back from a lone boolean cost hours and produced two wrong claims about which machine
+  had been used. The bracket shows the inputs, so a contradiction between them
+  (`uaData` saying one platform while `platform` says another — device emulation, a
+  privacy extension, a spoofed agent) is visible at a glance. The decision logic is
+  unchanged; only its provenance is now on the record.
 - `registry.json`: the `T25x38` cable flag is **confirmed on paper** (2026-08-13, B1 Pro,
   on a Mac so the write path was `paced`). It shipped in 2.0.0 with a `_note` saying the
   geometry was arithmetic plus the `T30x45` precedent; that note now records the
