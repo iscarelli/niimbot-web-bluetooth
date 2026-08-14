@@ -6,6 +6,12 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+## [2.3.1] - 2026-08-14
+### Fixed
+- **T-010**: the npm `description` in `package.json` still said "Validated on B1, B1
+  Pro, M2-H and D11_H" — now lists all five validated printers: "Validated on B1, B1
+  Pro, M2-H, D11_H and D110."
+
 ## [2.3.0] - 2026-08-14
 ### Added
 - **Niimbot D110 (model id 2304)** — the fifth printer validated on real hardware
@@ -597,7 +603,8 @@ All notable changes to this project are documented here. The format is based on
   (`v4`, 300 dpi), reverse-engineered protocol V4 documentation, and a standalone demo.
 - Multi-label batches print as one continuous job (no stop/retract between labels).
 
-[Unreleased]: https://github.com/iscarelli/niimbot-web-bluetooth/compare/v2.3.0...HEAD
+[Unreleased]: https://github.com/iscarelli/niimbot-web-bluetooth/compare/v2.3.1...HEAD
+[2.3.1]: https://github.com/iscarelli/niimbot-web-bluetooth/compare/v2.3.0...v2.3.1
 [2.3.0]: https://github.com/iscarelli/niimbot-web-bluetooth/compare/v2.2.0...v2.3.0
 [2.2.0]: https://github.com/iscarelli/niimbot-web-bluetooth/compare/v2.1.0...v2.2.0
 [2.1.0]: https://github.com/iscarelli/niimbot-web-bluetooth/compare/v2.0.0...v2.1.0
