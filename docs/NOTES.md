@@ -421,3 +421,32 @@ in Wireshark; the command appears directly. One place also remains unlooked-at:
 **Why this is written down.** A negative result that nobody records gets re-derived. This
 sweep cost an evening; the next person to wonder where ribbon level lives should read
 this instead of repeating it.
+
+## The printer reports its own printhead width — `dc[03]`, bytes 4-5
+
+Found while bringing up the D11_H, 2026-08-13. `probe(0xDC, [0x03])` answers `0xDE` with
+ten bytes, and the third 16-bit field is the printhead width in pixels:
+
+    M2-H    de:  01 01  01 36  [02 40 = 576]  03 02 01 00
+    D11_H   de:  04 01  04 1c  [00 90 = 144]  03 02 01 00
+
+**Confirmed on the D11_H by measurement.** Solid black sent at 177 px and at 144 px came
+out *exactly the same width* — both clipped at the same limit — while 136 px came out
+visibly narrower. So the head is 144, which is what `dc[03]` said.
+
+(The first two fields of `de` are not new: they repeat `40[0c]` and `40[09]`.)
+
+**This retracts something claimed earlier today.** The M2-H note said its head "reaches at
+least 584" because solid black at 584 printed edge to edge. `dc[03]` says **576**, and
+584 − 576 = 8 px = **0.68 mm** — well inside what "it reached the edge" can hide on a
+50 mm label. The observation was real; the conclusion drawn from it was too strong. The
+same comparison test would settle it: print solid black at 584 and at 576 and see whether
+the bands are identical.
+
+**And it makes Vikunja #970 answerable with no labels at all.** The open question is
+whether the B1 Pro's head is 567 or 584. Connect a B1 Pro and run:
+
+    await Niimbot.probe(0xdc, [0x03])
+
+Bytes 4-5 of the reply are the answer. Confirm it the same way if it matters: two solid
+blacks, one at the reported width and one above it, and compare.

@@ -24,7 +24,7 @@
       "name_prefixes": ["B1"]
     },
     "d11h": {
-      "_note": "Niimbot D11_H — model id 528, protocol 5, advertised name e.g. 'D11_H-H225012706'. Discovered and printed 2026-08-13: the v4 command sequence works (solid black printed on the first attempt). dpi 300 is inferred, not measured — a 15 mm label at 300 dpi is 177 px, and the printer accepted and printed W=177. NO SIZE ENTRY YET: the printable width is unresolved (docs/protocol-v4.md says 136 px, a byte in the dc[3] response reads 144, and the first print suggests neither). Do not add one until the black band has been measured with a ruler.",
+      "_note": "Niimbot D11_H — model id 528, protocol 5, advertised name e.g. 'D11_H-H225012706'. Discovered and printed 2026-08-13; the v4 command sequence works. Printhead is 144 px, MEASURED: solid black sent at 177 px and at 144 px came out exactly the same width, so both were clipped at the same limit, while 136 px came out narrower. That also matches the value the printer itself reports in dc[03] bytes 4-5 (00 90 = 144). dpi 300 follows: 144 px over the ~12.2 mm printed band.",
       "label": "Niimbot D11_H",
       "id": 528,
       "dpi": 300,
@@ -79,6 +79,17 @@
       "w_px": 567,
       "h_px": 354,
       "margin": 10,
+      "dpi": 300
+    },
+    "T15x30": {
+      "_note": "D11_H 15×30 mm @ 300 dpi. w_px is the PRINTHEAD (144), not the label: 15 mm would be 177 px and the head clips at 144 — measured 2026-08-13 by printing solid black at 177 and at 144 and getting identical widths. So a 15 mm label keeps ~1.4 mm unprinted on each side, and that is the printer, not a choice. docs/protocol-v4.md's 136 px for this printer is wrong — 136 came out visibly narrower.",
+      "label": "15 × 30 mm (D11_H)",
+      "code": "T15*30",
+      "w_mm": 15,
+      "h_mm": 30,
+      "w_px": 144,
+      "h_px": 354,
+      "margin": 6,
       "dpi": 300
     },
     "T30x45": {

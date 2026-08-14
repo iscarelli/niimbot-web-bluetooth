@@ -368,9 +368,15 @@ but the B1 printhead is 384 px (≈48 mm) — using `W`=400 loses the rightmost 
 | `T50*30` | B1 Pro | `v4` | 584 | 354 | 73 |
 | `T50*30` | B1 | `b1` | 384 | 240 | 48 |
 | `T30*45+50` | B1 Pro (cable flag) | `v4` | 354 | 1122 | 45 |
-| `T15*50` | D11_H | `v4` | 136 | 590 | 17 |
+| `T15*30` | D11_H | `v4` | **144** | 354 | 18 |
 | `T12.5*74+35` | D11_H (cable flag) | `v4` | 136 | 1287 | 17 |
 
+> **D11_H `w_px` corrected 2026-08-13.** This table said **136** for the D11_H; it is
+> **144**, measured: solid black sent at 177 px and at 144 px came out exactly the same
+> width (both clipped at the head), while 136 px came out visibly narrower. 144 is also
+> what the printer reports in `dc[03]` bytes 4-5. The old `T15*50` row is replaced by the
+> `T15*30` roll that was actually measured; nobody has printed a 15×50 here.
+>
 > B1 `T50*30` (384 × 240) printed correctly on real hardware. `w_px`=384 is the
 > full printhead (48 mm); the 50 mm label keeps a ~2 mm unprinted right margin.
 
