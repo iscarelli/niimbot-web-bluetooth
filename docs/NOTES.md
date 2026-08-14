@@ -543,6 +543,13 @@ pure arithmetic:
   and neither can an eye at 12 mm. Three test blocks came out as three flat grey bars — the
   pattern was below the printer's resolution, which says nothing about density.
 
+- **Overflow.** A `<canvas>` accepts drawing past its bounds without a word — no exception,
+  no warning, the pixels simply are not there. The step-wedge card's last text line was laid
+  out at y 332…365 on a 354 px canvas and printed with the bottom third of its glyphs gone,
+  which reads as a printing defect rather than an arithmetic one. Any generator that stacks
+  blocks should carry a cursor and **throw** when the next block will not fit; hand-summed
+  offsets are how the 11 px got there.
+
 **The target that works is a step wedge in both polarities:** bars of 1, 2, 3, 4, 6, 8 px,
 once black-on-white and once knocked out white-on-black, plus the same 8 pt word set solid
 and reversed. Reversed detail is the sensitive half — extra heat spreads the dot and *closes*
