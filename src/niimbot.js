@@ -970,6 +970,24 @@
     set FORCE_PACING(v) { setWriteOverride(v ? "paced" : null); },
     get printer() { return printerInfo; },   // { modelId, protocolVersion, label, task, dpi } after connect
     isSupported: () => !!navigator.bluetooth,
+    // ── DIAGNOSTIC, not API ────────────────────────────────────────────────────
+    // Send one command and return whatever comes back, accepting ANY response opcode:
+    //   await Niimbot.probe(0x1a, [0x02])   → { cmd, data } | null
+    // It exists because protocol questions get answered by asking the printer, and the
+    // alternative is guessing. Added 2026-08-13 while hunting where the M2-H reports
+    // remaining RIBBON: every response the driver already collects (the whole b1
+    // handshake, 0xA5→0xB5, all 0x40 info reads, the heartbeat and the RFID payload) is
+    // byte-identical between a nearly-full ribbon and a half-spent one, so the figure
+    // the official app shows must come from something nobody here asks for.
+    //
+    // ⚠ SWEEP SUB-CODES, NOT TOP-LEVEL OPCODES. Probing 0x40[00..20] or 0x1A[01..05] is
+    // reading. Sweeping the top-level command space blind is not: this protocol has
+    // commands that print, feed, write RFID and update firmware, and an unknown opcode
+    // may be one of them. Nothing in the driver calls this.
+    probe: async (cmd, data, timeoutMs) => {
+      if (!characteristic) throw new Error("Not connected — probe needs an open connection.");
+      return await sendWait(cmd, data || [], null, timeoutMs != null ? timeoutMs : 400);
+    },
     // Connect and identify the printer (model id + protocol) without printing — the
     // app can read the returned info to auto-select the right model/size.
     identify: async (model) => { await connect(model); return printerInfo; },

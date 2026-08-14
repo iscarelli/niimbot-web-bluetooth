@@ -6,6 +6,16 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 ### Added
+- **`Niimbot.probe(cmd, data, timeoutMs)` — a diagnostic, not API.** Sends one command
+  and returns whatever answers, accepting any response opcode. Added while hunting where
+  the M2-H reports remaining ribbon: with a nearly-full ribbon and a half-spent one,
+  **every** response the driver already collects is byte-identical — the whole b1
+  handshake, `0xA5→0xB5`, all eight `0x40` info reads, the heartbeat and the RFID
+  payload. The only byte that moved is the heartbeat's `d[1]`, which drifts on its own
+  (it changed with nothing touched at all). So the figure the official app shows comes
+  from something nobody here asks for, and asking is the only way to find it.
+  Nothing in the driver calls it. **Sweep sub-codes, not top-level opcodes:** this
+  protocol has commands that print, feed, write RFID and update firmware.
 - **`getStatus().decoded.heartbeat.ribbonInserted` is back**, at a different offset from
   the one 2.0.0 removed. That removal was right — the old offset read `true` on a
   direct-thermal B1 Pro, which has no ribbon slot. `d[7]` is where the field actually
