@@ -134,23 +134,33 @@ on a machine whose OS nobody recorded — and with `WRITE_MODE` unset, the effec
 IS the platform (`IS_MAC` downgrades `fast` → `paced` at `src/niimbot.js:359`), so an
 unrecorded OS means an unrecorded mode.
 
-**Flipping the default to `paced` would NOT have fixed the environment that fails.**
-The two bold rows above are the **same content and the same effective write mode**, with
-opposite results — so whatever differs, it is not the mode:
+**The two 5-label runs were the SAME machine and browser, and the difference is
+UNEXPLAINED.** The maintainer states that all testing was done on one Mac in Chrome.
+The two runs are four minutes apart:
 
-- `mac=true` environment, dense noise, `paced` → **5 correct labels**
-- `mac=false` environment, dense noise, `paced` → **nothing on paper**, rejected at the
-  first page's PageEnd
+    22:02  detected=fast   mac=false   → override paced → nothing on paper, rejected at page 1
+    22:06  detected=paced  mac=true    → auto            → 5 correct labels, numbered 1–5
 
-Changing which mode is chosen by default therefore cannot fix the failing side; it would
-only slow down everyone else. **The default stays as it is.**
+`IS_MAC` is computed **once at load**, so a Mac reporting `mac=false` means `navigator`
+itself reported something non-Mac in that session — DevTools device emulation, an
+extension, a spoofed agent. Nothing recorded which, because at the time the log printed
+only the boolean. That is now fixed: the connect line carries the inputs
+(`mac=… [uaData="…" platform="…"]`, added 2026-08-13), so a recurrence explains itself.
 
-⚠ **The "platform" column above reports what `IS_MAC` printed in the connect line, NOT
-which computer was used.** Nobody recorded the machine for these runs, and `IS_MAC` is
-not trustworthy as a platform label here: on 2026-08-13 the maintainer stated that a
-session whose connect line read `mac=true` was run on Windows. So the two rows differ in
-*something* about the environment — OS, browser, BLE stack, or distance to the printer —
-and this page does not know which. Do not restate them as "Mac vs Windows".
+**What this does NOT support**, and what an earlier version of this page wrongly claimed:
+
+- Not "Mac vs Windows" — there was one machine.
+- Not "the platform matters even with the write mode held constant" — there was one
+  platform.
+- Not "density is the trigger, so pace everything" — the failing run was already paced.
+
+**What survives:** a job in `paced` produced nothing on paper and the driver rejected it
+truthfully, and a job in `paced` four minutes later printed five correct labels. Whatever
+differs between them is not the write mode and is not the machine. It is not known.
+
+**Consequence for the default:** it stays `fast`, because nothing here identifies a
+change that would have helped. Flipping it would be acting on a story, and the story
+this page told for most of 2026-08-13 turned out to be wrong twice.
 
 (The earlier reading on this page — "density is the trigger, so pace everything" — was
 mine, and it was wrong for this reason. The rackplan session objected first, on the
