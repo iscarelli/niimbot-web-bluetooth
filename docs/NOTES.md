@@ -940,3 +940,23 @@ approach — an offset of −6 that a six-candidate sweep later corrected to −
 this makes the N1's `T14x50` geometrically identical to the D110's `T15x50` (96 × 400). They
 are still separate entries: `T15x50` carries `offset_y_px: -2`, measured on a D110 by a
 six-label sweep, and nobody has measured paper registration on an N1.
+
+### `pagesPerJob: 1` — measured, and it stops being a D110 anecdote
+
+`copies: 3` at the real 96 × 400 geometry printed **one** label. The interesting part is what
+the printer agreed to first: `SetPageSize` went out as `13 (6b) 01 90 00 60 00 03` — 400 rows,
+96 px, **three copies** — and was acked with `14`; then `d3: 01 8f 01` reported **399**, so all
+400 rows arrived. Nothing was lost on the radio and the task was not wrong. The printer
+accepted a three-copy job, received it whole, printed one label, and parked its counter at
+`page 1 / 100 % / 100 %` until `PAGE_WAIT_MS` (25 s) gave up and the driver threw.
+
+That is the D110's failure reproduced field for field, on a second model — same `b1` task,
+same 203 dpi, same 96 px head, same small-label family. So the split-into-N-jobs path written
+for the D110 covers the N1 unchanged.
+
+**What this does NOT license.** Two models sharing a defect is a pattern, not a rule, and
+`pagesPerJob` stays per-MODEL and measured one at a time — the `CLAUDE.md` constraint exists
+because assuming a task family behaves alike broke the B1 Pro in v1.3.3 and then cost a second
+time on the D110. The useful lesson is cheaper than a rule: **the N1's cap was found because
+someone spent three labels asking, rather than reasoning that "3 copies obviously works".** It
+is three labels against a defect that reports 100 % and hands you one label.
