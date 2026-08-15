@@ -13,6 +13,7 @@ and hardware confirmation is the maintainer's separate step.
 ## [ ] T-013  Niimbot B2 Pro support (model id 6912)
 Why:     the B2 Pro was brought up on real hardware 2026-08-14 and printed end to end;
          the driver still reports it as `unknown (id 6912)` and the demo cannot select it.
+Vikunja: 996
 Files:   src/niimbot.js, registry.json, README.md, CHANGELOG.md
 Do:
   Everything below is MEASURED on hardware (macOS/Chrome, 2026-08-14, capture in
