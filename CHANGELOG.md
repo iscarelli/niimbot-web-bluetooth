@@ -91,6 +91,21 @@ All notable changes to this project are documented here. The format is based on
   runs on a `v*.*.*` tag push, so this is unverified end-to-end until the next release.
 
 ### Fixed
+- **T-019 — `T14x50` gets `offset_y_px: -2` (measured on an N1, not copied)**: the first
+  print at the shipped 96 × 400 geometry came out **clipped at the bottom**, so every N1
+  print lost content at the end of the label. `registry.json`'s `T14x50` now carries
+  `offset_y_px: -2`, **measured on an N1** (2026-08-15) by a six-candidate sweep
+  (`0, -2, -4, -6, -8, -10`), each candidate printed on its own label with its value drawn
+  on it and compared against the physical edge. It equals the D110's `T15x50` value, and
+  that is a **coincidence of two independent measurements, not a shared source** — the
+  `_note`'s standing prohibition on copying between the two entries is what made someone
+  measure instead of assume, so it stays. The sweep also settled the dpi from a second
+  route: a 400-row page fitting a 50 mm label with 2 rows of correction means the printable
+  area **is** 400 rows over 50 mm — 8.0 px/mm, exactly 203 dpi — so `h_px: 400` is
+  confirmed and the clipping was registration, not an over-long page. Known cost, as on
+  `T15x50`: a negative offset crops the **top** 2 rows (~0.25 mm) of the source, so content
+  drawn flush against the top edge is still clipped. Data only; no code path changed, and a
+  confirming print at `-2` through the demo's normal path is **not yet done on paper**.
 - **T-018 — N1 `pagesPerJob: 1` (measured) + cover it in the harness**: a multi-copy or
   multi-page job on an **N1** printed **one** label and then threw. `MODEL_IDS[3586]`
   now carries `pagesPerJob: 1`, so the driver splits N copies/pages into N separate jobs

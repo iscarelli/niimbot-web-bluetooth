@@ -10,49 +10,6 @@ and hardware confirmation is the maintainer's separate step.
 
 ## Active
 
-## [ ] T-019  `T14x50` gets `offset_y_px: -2` (measured on an N1, not copied)
-Why:     the first print at the shipped 96 × 400 geometry came out clipped at the bottom.
-         A six-candidate offset sweep on real hardware picked −2. Without it every N1 print
-         loses content at the end of the label.
-Vikunja: 997
-Files:   registry.json, CHANGELOG.md
-Do:
-  Measured 2026-08-15; the capture is `docs/NOTES.md` → *N1* → *`offset_y_px: -2` — and the
-  sweep answered a second question nobody asked it*. Read it first.
-
-  1. `registry.json`, `sizes.T14x50`: add `offset_y_px: -2`.
-
-  2. Its `_note` currently explains at length why `T15x50`'s `-2` must NOT be copied. That
-     warning stays — but it now reads as if this entry has no offset, which is false.
-     Rewrite that part so it says, in this order:
-       - `T14x50` has its own `offset_y_px: -2`, **measured on an N1** by the six-candidate
-         sweep (`0, -2, -4, -6, -8, -10`), each candidate printed with its own value drawn
-         on the label and compared against the physical edge;
-       - it happens to equal the D110's, and that is a coincidence of two measurements, not
-         a shared source. Copying `T15x50`'s value would have produced the same number by
-         luck and taught the next person that copying is fine, which is why the earlier
-         prohibition existed and why it must stay in the note;
-       - what the sweep also established: a 400-row page fitting a 50 mm label with 2 rows
-         of correction means the printable area IS 400 rows over 50 mm — 8.0 px/mm, exactly
-         203 dpi. So `h_px: 400` is confirmed by a second, independent route, and the
-         clipping was registration, not an over-long page.
-     Also record the known cost, as `T15x50`'s note does for its own −2: a negative offset
-     crops the TOP rows of the source (here 2 rows ≈ 0.25 mm), so content drawn flush
-     against the top edge will still be clipped.
-
-  3. `CHANGELOG.md`: one bullet under `## [Unreleased]` → `### Fixed`, naming T-019. This
-     is user-visible — without it, N1 prints lose the bottom of the label.
-Verify:
-  - `node -e "const s=require('./registry.json').sizes.T14x50;
-     if(s.offset_y_px!==-2) throw new Error('offset_y_px must be -2, got '+s.offset_y_px);
-     if(s.h_px!==400||s.w_px!==96) throw new Error('geometry must not change');
-     console.log('registry ok')"`
-  - `node test/label-size.test.js` and `node test/label-memory.test.js` pass
-  - `node --check src/niimbot.js`
-  Data only. The sweep that justifies this already ran on hardware — do not claim to have
-  repeated it, and note in your report that a confirming print at `-2` through the demo's
-  normal path is outstanding and is the maintainer's step.
-
 ## [ ] T-016  Stop the printhead clamp from failing silently, and unstale `package.json`
 Why:     two defects the T-013/T-014 implementers flagged. The clamp one is the worse
          kind: the demo's roll calculator passes `printhead_px: undefined` for any model
