@@ -11,8 +11,6 @@ and hardware confirmation is the maintainer's separate step.
 ## Active
 
 ## [ ] T-020  The registry still asserts what `NOTES.md` retracted (M2-H printhead)
-
-## [ ] T-020  The registry still asserts what `NOTES.md` retracted (M2-H printhead)
 Why:     `registry.json` says in TWO places that the M2-H head "reaches at least 584".
          `docs/NOTES.md` retracted that on 2026-08-13 — `dc[03]` reports **576**, and the
          8 px gap is 0.68 mm, which hides inside "it printed edge to edge". The retraction
