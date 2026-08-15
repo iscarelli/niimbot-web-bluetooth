@@ -756,3 +756,116 @@ The driver asks PageStart a question and ignores the answer. `sendWait(0x03, [0x
 `04 00` and `04 01` are indistinguishable to it. On page 1 the printer answered `00` and the
 driver sent SetPageSize anyway, straight into the refusal. Every `sendWait` in the driver has
 this blind spot; this is the first capture where a payload carried a "no".
+
+## B2 Pro bring-up: the first model where every guess held (2026-08-14)
+
+Model id **6912** (`48: 1b 00`), advertised `B2 Pro-I304050285`, protocol 5, `v4` task,
+300 dpi, printhead **576 px**. Captured on macOS/Chrome against the live GitHub Pages demo
+(2.3.1) — the maintainer was remote, so `demo/serve.mjs` never ran.
+
+**No code changed to bring it up.** Two paths already in the driver made it possible, and
+both exist because someone previously argued they were dead weight:
+
+- `connect()` falls back to `acceptAllDevices` when the model carries no `name_prefixes`
+  (`src/niimbot.js:379` block) — so `await Niimbot.identify({})` from the console finds a
+  printer the registry has never heard of. The demo's **Identify** button cannot: it filters
+  the chooser to the union of known prefixes (`B1`, `D11`, `M2`, `D110`), and `B2 Pro-…`
+  matches none of them.
+- `assertSelection()` is a deliberate no-op when `printerInfo.task == null`, and
+  `printImage()` takes `model`/`size` as plain objects. So a whole model can be tested from
+  the console with invented `{ task, density, label_type, speed }` and `{ w_px, h_px }`,
+  with no `registry.json` edit and nothing to revert if the guess is wrong.
+
+**`dc[03]` said 576 before any label was spent**, third model in a row where it worked:
+
+    M2-H     de:  01 01  01 36  [02 40 = 576]  03 02 01 00
+    D11_H    de:  04 01  04 1c  [00 90 = 144]  03 02 01 00
+    B2 Pro   de:  02 01  02 0b  [02 40 = 576]  03 02 01 00
+
+This also confirms on a third model that `de`'s first two fields just repeat `40[0c]`
+(hardware version, `02 01`) and `40[09]` (software, `02 0b` = 2.11) — previously seen twice,
+now three times.
+
+### 300 dpi was established with no ruler, using the label as the reference
+
+The obvious test — print N rows, measure the millimetres — needs an instrument the remote
+tester may not have, and an eyeballed "about 20 % of the label" is not evidence: 100 rows is
+28 % of a 30 mm label at 300 dpi and 42 % at 203, and nobody eyeballs the difference
+reliably.
+
+What worked: **print a block 354 px tall — exactly 30 mm _if_ the printer is 300 dpi — onto
+a 50 × 30 label.** The label itself becomes the measuring stick, and the two hypotheses
+predict visibly different pictures:
+
+| | 300 dpi | 203 dpi |
+|---|---|---|
+| block height | fills the label exactly | 44 mm — overruns onto the gap and the next label |
+| white margin right of a 354 px block | ≈ 20 mm | ≈ 6 mm |
+
+Result: filled the height exactly, ~40 % white to the right. Both signals agreed, and neither
+needed a measurement — only a comparison. **Generalises: to identify a resolution remotely,
+send the dimension the hypothesis predicts and let the consumable adjudicate.**
+
+(Worth recording that the B2 Pro is *sold* as 300 dpi and that turned out to be right. An
+earlier turn in this session cited the D110 as a case where the datasheet said 300 and the
+ruler said 203 — that is **not what happened**. The D110's `dpi: 203` was measured, and the
+"300 dpi would have been 50 mm" in its `MODEL_IDS` comment is the arithmetic showing the
+measurement discriminates, not a belief anyone held. The D110's real surprises were the
+`task` (`b1`, not `v4`) and `pagesPerJob: 1`.)
+
+### Multi-page works — and this is the first model where it was checked before shipping
+
+`copies: 3` printed **three** labels, with the printer's own counter stepping `page 1` →
+`page 2` → `page 3` and `PrintEnd` acked (`f3` → `f4`). So no `pagesPerJob` entry, and that
+absence is now MEASURED rather than assumed — which is the whole difference from the D110,
+where the same call acked cleanly, counted to 1, and printed one label.
+
+All three test prints ended `done (PrintEnd acked)`. Nothing went through the unconfirmed
+path.
+
+**The B2 Pro emits `0xD3` too.** The D110 note above says "whether the other models emit it
+has not been checked". Checked now: for a 354-row page the printer volunteered `d3: 00 c7 01`
+(199) and `d3: 01 61 01` (353) unasked — a row-received count from the far side of the radio,
+matching what was sent. Two models out of two that were looked for it. Still nothing reads
+it; `lastUnsolicited` takes it and drops it.
+
+### What is NOT measured on the B2 Pro
+
+- **`paced` vs unpaced.** The print ran `paced` because the tester is on macOS (`IS_MAC`,
+  `src/niimbot.js:107`), not because pacing was shown necessary. Unpaced was never tried.
+  Same standing as the D110 entry.
+- **`bundle`.** Never tried; conservative `false`.
+- **Whether 576 is really the clip point.** The head printed edge to edge on a 50 mm label,
+  which is exactly the observation that was too strong on the M2-H (584 "reached the edge",
+  `dc[03]` said 576, and 8 px = 0.68 mm hides in a border). Here `dc[03]` agrees, so the two
+  sources concur — but the print did not independently confirm the number.
+
+## N1: the first printer here that is not a table row (2026-08-14)
+
+Model id **3586** (`48: 0e 02`), advertised `N1-H324110115`, firmware 4.07. **Nothing has
+been printed on it.** Three divergences, any one of which the current code gets wrong:
+
+**1. `0xA5` answers with opcode `0xB4`, not `0xB5`** — payload `00 96`. `detectPrinter()`
+(`src/niimbot.js:344`) waits on `0xb5`, so it burns its 1 s timeout and reports
+`protocolVersion: null`. This is *not* the D110 case: the D110 answers `0xb5` with too few
+bytes, so the length guard covers it. Here the opcode itself is different, and the reply is
+dropped as unsolicited.
+
+**2. `dc[03]` and `dc[04]` are both refused** — each answers cmd `0x00`, payload `01`. So
+there is **no printhead-width report** (the trick that saved labels on the D11_H and the
+B2 Pro is unavailable here) and **no heartbeat in that form**, which means `getStatus()` and
+`readiness()` have nothing to decode and `b1Handshake()` burns another second waiting.
+
+**3. `write=false writeNoResp=true`** — the characteristic has **no acked write path at
+all**. Every other model here reports both `true`. `WRITE_MODE="acked"` on this printer is
+not "slower but safer", it throws. `writeRaw()`'s error text (`src/niimbot.js:228`) names the
+opposite failure — "this characteristic has no unacked write path" — and would be misleading
+here.
+
+What does work: `40[0b]` (serial, ASCII `H324110115`), `40[0d]` (MAC, `ca e6 9e 11 03 24`),
+and the RFID read `0x1a[01]` → `0x1b` (barcode `04232207`, 150 labels total, 4 used).
+
+**One coincidence, deliberately not promoted to a fact:** the `0xB4` payload `00 96` is 150,
+the same as the roll's total-label count from the RFID. It may be that `0xA5` means something
+else entirely on this family, or it may be chance on one capture. One observation is not a
+decoding.
