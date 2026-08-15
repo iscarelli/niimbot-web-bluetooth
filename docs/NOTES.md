@@ -912,15 +912,31 @@ second kind of question discriminates. This is the same *print the parameter on 
 technique that settled the D110's offset sweep, and it is the third time it has been the thing
 that worked.
 
-### The printhead is bounded, not pinned: 96 ≤ head < 113 px
+### The printhead is 96 px — pinned by two methods that bound it from opposite sides
 
-Free, from the ruler print's own failure: three-digit labels came out as two digits (`100` →
-`10`, `350` → `35`) while the two-digit `50` survived. The text starts at x = 62 and each bold
-30 px digit is ~17 px, so two digits end near 96 and three near 113 — the head clips between
-them. 96 px would match the D110 exactly, which is the other 203 dpi small-label unit here,
-but matching is not measuring.
+**First bound, free, from the ruler print's own failure.** Three-digit labels came out as two
+digits (`100` → `10`, `350` → `35`) while the two-digit `50` survived. The text starts at
+x = 62 and each bold 30 px digit is ~17 px, so two digits end near 96 and three near 113. The
+`50` surviving puts the head at **≥ ~96**.
 
-**This is why the N1 ships with no size entry.** A 14 mm label at 203 dpi is 112 px, which sits
-inside the uncertainty; setting `w_px: 112` against a 96 px head would lose ~2 mm on the right
-with nothing reporting it — exactly what `T15x50`'s `_note` records happening on the D110,
-where 120 px was sent and 96 came out.
+**Second bound, one label.** Five stacked bands of increasing width — 80, 96, 104, 112, 120 px
+— each labelled with its own width. Result: **everything from 96 up came out identical, and 80
+came out narrower.** Identical bands are both clipped, so the head is **≤ 96**; the narrower 80
+puts it **> 80**.
+
+The two intervals meet at exactly **96**, which is also a multiple of 8 — the stride alignment,
+and the same reasoning that fixed the D110's head at 96 ("the only multiple of 8 within a
+millimetre of the reading"). So the N1 and the D110 have the same printhead, which is what two
+203 dpi small-label units of the same generation ought to have.
+
+**Why two bounds and not one measurement.** A single reading of "how wide did the black come
+out" converts a ruler into a number and hides its own error. Bounding from both sides does not:
+the `50` surviving and the 96-band clipping are different observations that cannot both be
+wrong in the same direction. The D110's own `_note` records the cost of the one-reading
+approach — an offset of −6 that a six-candidate sweep later corrected to −2.
+
+**Consequence for the size entry.** A 14 mm label at 203 dpi is 112 px, but the head is 96, so
+`w_px: 96` — ~1 mm unprinted on each side, and that is the printer, not a choice. Note that
+this makes the N1's `T14x50` geometrically identical to the D110's `T15x50` (96 × 400). They
+are still separate entries: `T15x50` carries `offset_y_px: -2`, measured on a D110 by a
+six-label sweep, and nobody has measured paper registration on an N1.
