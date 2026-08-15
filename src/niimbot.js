@@ -379,11 +379,14 @@
     // paced only because IS_MAC forces it, and unpaced was never tried on this model —
     // same standing as the D110 (2304) entry.
     // `bundle: false` is the conservative default, never measured here.
-    // No `pagesPerJob`, and that ABSENCE is UNTESTED — `copies > 1` was never run on
-    // this printer. The D110 is the same task, the same dpi and the same small-label
-    // family, and it acks N pages while printing only page 1. Measure before trusting
-    // a multi-page job here.
-    3586: { label: "Niimbot N1",     task: "b1", dpi: 203, paced: true,  bundle: false },
+    // pagesPerJob: 1 — MEASURED 2026-08-14, and the printer agreed to the job first:
+    // SetPageSize went out as `13 (6b) 01 90 00 60 00 03` (400 rows, 96 px, THREE
+    // copies) and was acked with `14`, then `d3: 01 8f 01` reported row 399, so all 400
+    // rows arrived — nothing was lost on the radio. One label printed, and the counter
+    // parked at `page 1 / 100 % / 100 %` until PAGE_WAIT_MS expired and the driver
+    // threw. This is per-MODEL: it says nothing about any other b1-task model that has
+    // not been run the same way.
+    3586: { label: "Niimbot N1",     task: "b1", dpi: 203, paced: true,  bundle: false, pagesPerJob: 1 },
   };
   let printerInfo = null;   // { modelId, protocolVersion, label, task, dpi } after connect
 

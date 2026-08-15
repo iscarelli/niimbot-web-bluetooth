@@ -250,18 +250,21 @@ connecting — if the model's `task`/`dpi` does not match the printer that answe
   *distinct* labels in one continuous job (one upload each, streamed back-to-back, no
   retract).
 
-> **Exception, and it is automatic — the D110 prints one page per job.** It acks
-> `copies=N` and a multi-page job exactly like the others and then prints only the first
-> label, so the driver splits both calls above into **N complete jobs** for that model
-> (`pagesPerJob` in `MODEL_IDS`). Nothing changes for callers — ask for 3 copies, get 3
-> labels — but the promises in the two bullets do not hold there: **the upload is paid per
-> label instead of once**, and the paper feeds out and retracts between them. Measured on a
-> 264-row image: 3 copies took **18 s**, of which ~3.2 s is one upload — so roughly 6 s a
-> label, against the ~10 s the whole job would cost if `copies` worked. Light labels barely
-> notice (a 14-row image runs ~3 s a label, which is print time you pay anyway); the cost
-> lands on image-heavy ones. The driver logs one line saying so when it splits.
-> This is why flow control lives per **model** and not per protocol family: the D110
-> speaks the same `b1` sequence as the B1 and the M2-H, which do pipeline pages fine.
+> **Exception, and it is automatic — the D110 and the N1 print one page per job.** Both
+> ack `copies=N` and a multi-page job exactly like the others and then print only the
+> first label, so the driver splits both calls above into **N complete jobs** on those two
+> models (`pagesPerJob` in `MODEL_IDS`). Nothing changes for callers — ask for 3 copies,
+> get 3 labels — but the promises in the two bullets do not hold there: **the upload is
+> paid per label instead of once**, and the paper feeds out and retracts between them.
+> Measured on a D110 with a 264-row image: 3 copies took **18 s**, of which ~3.2 s is one
+> upload — so roughly 6 s a label, against the ~10 s the whole job would cost if `copies`
+> worked. Light labels barely notice (a 14-row image runs ~3 s a label, which is print
+> time you pay anyway); the cost lands on image-heavy ones. The driver logs one line
+> saying so when it splits.
+> This is why flow control lives per **model** and not per protocol family: the D110 and
+> the N1 speak the same `b1` sequence as the B1 and the M2-H, which do pipeline pages
+> fine. Two models sharing the cap is not a rule about `b1` — each was measured on its
+> own, and the field is added to a model only after it has been.
 - **`density`** (1–5, the scale the official NIIMBOT app uses) — print heat, per print,
   overriding the model's default from `registry.json`. Validated **before the printer is
   touched**: an out-of-range value throws and nothing is written, because this is the one

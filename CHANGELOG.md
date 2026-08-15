@@ -91,6 +91,21 @@ All notable changes to this project are documented here. The format is based on
   runs on a `v*.*.*` tag push, so this is unverified end-to-end until the next release.
 
 ### Fixed
+- **T-018 — N1 `pagesPerJob: 1` (measured) + cover it in the harness**: a multi-copy or
+  multi-page job on an **N1** printed **one** label and then threw. `MODEL_IDS[3586]`
+  now carries `pagesPerJob: 1`, so the driver splits N copies/pages into N separate jobs
+  on that model exactly as it already did on the D110 — ask for 3 copies, get 3 labels.
+  Measured on hardware 2026-08-14, and the printer agreed to the job first: `SetPageSize`
+  went out as `13 (6b) 01 90 00 60 00 03` (400 rows, 96 px, three copies) and was **acked**
+  with `14`, `d3: 01 8f 01` reported row 399 so all 400 rows arrived, and still one label
+  came out while the counter parked at `page 1 / 100 % / 100 %` until `PAGE_WAIT_MS`
+  expired. `test/one-page-per-job.test.js` gains an N1 identification check `(0c)` and an
+  N1 splitting case `(d)`; the B1 Pro regression `(c)` — one job, `pages=3`, `copies=3` —
+  still passes, which is the assertion proving the cap did not leak into a model without
+  it. Two models sharing the defect is **not** a rule about the `b1` task: `pagesPerJob`
+  stays per-MODEL and measured one at a time. The split path itself is unchanged code, and
+  **no printer ran the harness** — that the N1 now puts out 3 of 3 is hardware
+  confirmation, the maintainer's separate step.
 - **T-014**: three stale claims in the `── Printer identification ──` comment block above
   `MODEL_IDS` (`src/niimbot.js`). It listed only the B1 and B1 Pro as validated ids when
   every id in the table except the **B1 SE (4098)** has now printed on hardware — the B1

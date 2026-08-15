@@ -6,6 +6,10 @@
  * on that model, and — the assertion that matters most — that every OTHER model still
  * gets exactly ONE job for N copies/pages.
  *
+ * The N1 (3586) was measured broken the same way on 2026-08-14 and carries the same
+ * field, so it is covered here too. Two models is a pattern, not a rule: `pagesPerJob`
+ * stays per-MODEL and measured one at a time (see CLAUDE.md, "Per-model, not per-task").
+ *
  * No dependencies, no runner: `node test/one-page-per-job.test.js`. Exits non-zero on
  * failure. NO PRINTER IS INVOLVED — everything below is a fake characteristic. Nothing
  * here proves the D110 actually prints 3 of 3 through the new path — only that the
@@ -20,11 +24,12 @@
  * waits for 0x48 (src/niimbot.js detectPrinter()). That harness gets away with it
  * because it passes an explicit `model` and never checks which branch fired. THIS
  * harness needs the driver to actually IDENTIFY the connected printer (modelId must
- * end up 2304 or 4097, matching MODEL_IDS), because pagesPerJob is keyed off
+ * end up 2304, 4097 or 3586, matching MODEL_IDS), because pagesPerJob is keyed off
  * `printerInfo.modelId`, not off the caller's `model` argument. So PrinterInfo here
  * is answered with opcode 0x48, carrying the model id big-endian: [0x09,0x00] = 2304
- * (D110), [0x10,0x01] = 4097 (B1 Pro). Confirmed below (assertion 0) that this
- * actually identifies before trusting any of the per-model assertions that follow.
+ * (D110), [0x10,0x01] = 4097 (B1 Pro), [0x0e,0x02] = 3586 (N1). Confirmed below
+ * (assertions 0, 0b, 0c) that this actually identifies before trusting any of the
+ * per-model assertions that follow.
  */
 "use strict";
 const assert = require("node:assert/strict");
@@ -48,6 +53,7 @@ let identifyId = null;          // [hi, lo] — what PrinterInfo (0x40[08]) answ
 
 const D110_ID = [0x09, 0x00];   // 2304
 const B1PRO_ID = [0x10, 0x01];  // 4097
+const N1_ID = [0x0e, 0x02];     // 3586
 
 function frame(cmd, data) {
   const pkt = new Uint8Array(7 + data.length);
@@ -68,7 +74,15 @@ function handle(bytes) {
   payloads.push({ cmd, data: Array.from(bytes.slice(4, 4 + bytes[3])) });
   switch (cmd) {
     case 0xc1: break;                                     // connect
-    case 0xa5: {                                          // PrinterStatusData → proto 4
+    // PrinterStatusData → proto 4. DELIBERATELY the same answer for every model,
+    // including the N1: a real N1 replies to 0xa5 with opcode 0xB4 (payload `00 96`),
+    // not 0xB5, so `protocolVersion` comes back null on hardware (docs/NOTES.md → N1).
+    // Do NOT model that here. This harness measures ONE thing — how many jobs the
+    // driver emits for N copies/pages — and pagesPerJob is keyed off `modelId` from
+    // 0x48, never off `protocolVersion`. Reproducing the 0xB4 quirk would couple the
+    // file to protocol behaviour it does not test, and would make an N1 detection
+    // change fail here as a phantom job-count problem.
+    case 0xa5: {
       const d = new Array(13).fill(0); d[11] = 3; d[12] = 0;
       answer(0xb5, d);
       break;
@@ -127,6 +141,7 @@ const PNG = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kA
 // task must match what the fake printer identifies as, or assertSelection() throws.
 const D110_MODEL = { name_prefixes: ["D110"], task: "b1", density: 3, label_type: 1, speed: 1 };
 const B1PRO_MODEL = { name_prefixes: ["B1"], task: "v4", density: 3, label_type: 1, speed: 1 };
+const N1_MODEL = { name_prefixes: ["N1"], task: "b1", density: 3, label_type: 1, speed: 1 };
 const SIZE = { w_px: 16, h_px: 2 };
 
 // Stub exactly what imageToPacked needs (src/niimbot.js): fetch → blob → createImageBitmap
@@ -179,6 +194,16 @@ const u16 = (d, i) => (d[i] << 8) | d[i + 1];
     await Niimbot.disconnect();
   });
 
+  await ok("(0c) …and the N1", async () => {
+    reset(N1_ID);
+    await Niimbot.identify(N1_MODEL);
+    assert.equal(Niimbot.printer && Niimbot.printer.modelId, 3586,
+      `expected modelId 3586 after identify, got ${Niimbot.printer && Niimbot.printer.modelId} — ` +
+      `a wrong N1_ID must fail HERE, as "the harness does not identify the N1", not later ` +
+      `as a mysterious job-count mismatch in (d)`);
+    await Niimbot.disconnect();
+  });
+
   // ── (a) D110, printImage(copies:3): three separate jobs ────────────────────
   await ok("(a) D110 printImage({copies:3}) emits THREE PrintStart(pages=1)/PrintEnd, never SetPageSize copies>1", async () => {
     reset(D110_ID);
@@ -218,12 +243,30 @@ const u16 = (d, i) => (d[i] << 8) | d[i + 1];
     assert.equal(u16(payloadsFor(0x13)[0].data, 4), 3, "SetPageSize must declare copies=3");
   });
 
+  // ── (d) N1, printImage(copies:3): three separate jobs, same as the D110 ─────
+  //       Measured on hardware 2026-08-14 (docs/NOTES.md → N1 → `pagesPerJob: 1`):
+  //       a 3-copy job was ACKED (SetPageSize `13 (6b) 01 90 00 60 00 03` → `14`),
+  //       every row arrived (`d3: 01 8f 01` = 399 of 400), and ONE label came out
+  //       while the counter parked at page 1 until PAGE_WAIT_MS gave up.
+  await ok("(d) N1 printImage({copies:3}) emits THREE PrintStart(pages=1)/PrintEnd, never SetPageSize copies>1", async () => {
+    reset(N1_ID);
+    await Niimbot.printImage(PNG, { model: N1_MODEL, size: SIZE, copies: 3 });
+    assert.equal(countCmd(0x01), 3, `expected 3 PrintStart, saw ${countCmd(0x01)}`);
+    assert.equal(countCmd(0xf3), 3, `expected 3 PrintEnd, saw ${countCmd(0xf3)}`);
+    for (const p of payloadsFor(0x01)) {
+      assert.equal(u16(p.data, 0), 1, `every PrintStart must declare pages=1, saw ${u16(p.data, 0)}`);
+    }
+    for (const p of payloadsFor(0x13)) {
+      assert.equal(u16(p.data, 4), 1, `no SetPageSize may carry copies>1, saw ${u16(p.data, 4)}`);
+    }
+  });
+
   console.log(failures
     ? `\nFAILED — ${failures} case(s).`
-    : "\nPASS — the D110 (pagesPerJob:1) now gets N separate jobs for N copies/pages, and\n"
-      + "       the B1 Pro is UNCHANGED (one job, pages=N, copies=N). NO PRINTER RAN THIS:\n"
-      + "       it proves the driver emits the right number of jobs, not that the D110\n"
-      + "       actually prints 3 of 3 through this path — that is hardware confirmation,\n"
-      + "       the maintainer's separate step.");
+    : "\nPASS — the D110 and the N1 (both pagesPerJob:1) get N separate jobs for N\n"
+      + "       copies/pages, and the B1 Pro is UNCHANGED (one job, pages=N, copies=N).\n"
+      + "       NO PRINTER RAN THIS: it proves the driver emits the right number of jobs,\n"
+      + "       not that either printer actually puts out 3 of 3 through this path — that\n"
+      + "       is hardware confirmation, the maintainer's separate step.");
   process.exit(failures ? 1 : 0);
 })();
