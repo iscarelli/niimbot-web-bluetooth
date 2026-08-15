@@ -6,6 +6,22 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 ### Added
+- **T-015 — N1 label size `T14x50`**: `registry.json` gains the N1's first size —
+  14 × 50 mm, 203 dpi, **96 × 400 px**, margin 6 — so the demo stops offering the N1 only
+  sizes that belong to other printers. **`w_px` 96 is the printhead, not the label**:
+  14 mm at 203 dpi is 112 px, so ~1 mm on each side never prints, and that is the printer.
+  The 96 is what T-014 was missing, and it was pinned on hardware (2026-08-14) by **two
+  bounds from opposite sides**, not one reading: a row-numbered ruler print whose two-digit
+  `50` survived while three-digit labels were cut puts the head at **≥ ~96**, and five
+  stacked bands (80/96/104/112/120 px) that came out identical from 96 up and narrower at
+  80 put it at **≤ 96 and > 80**. The intervals meet at 96, which is also the
+  stride-aligned multiple of 8 — the same reasoning that fixed the D110's head. `h_px` 400
+  is arithmetic from the measured 203 dpi (50 mm × 7.992).
+  **Deliberately no `offset_y_px`:** `T14x50` comes out geometrically identical to the
+  D110's `T15x50` (96 × 400), but that entry's `offset_y_px: -2` was measured on a D110 by
+  a six-label sweep and **paper registration has never been measured on an N1** — the two
+  stay separate entries, and the `_note` says so. Data only; no code path changed, and a
+  print at this geometry is not yet confirmed on paper.
 - **T-014 — Niimbot N1 (model id 3586)**: the seventh printer validated on real hardware
   (2026-08-14, capture in `docs/NOTES.md` § *N1*). `MODEL_IDS` gets a `3586` entry
   (`task: "b1"`, `dpi: 203`, `paced: true`, `bundle: false`) and `registry.json` a `n1`
@@ -17,10 +33,11 @@ All notable changes to this project are documented here. The format is based on
   **`dpi: 203` is measured and contradicts the spec sheet: the N1 is sold as 300 dpi.**
   A row-numbered ruler on a 14 × 50 mm label was truncated after row 350, and row 350
   landed ~45 mm down (~7.8 px/mm, against 7.99 for 203 dpi); at 300 dpi it would have
-  sat 29.6 mm down leaving ~20 mm blank. **No label size ships for the N1**: the
-  printhead is only bounded (96 ≤ head < 113 px), and guessing 112 px for a 14 mm label
-  would silently clip the right edge — the failure `T15x50`'s `_note` records on the
-  D110. Print with an explicit `{ w_px, h_px }` until the head is measured.
+  sat 29.6 mm down leaving ~20 mm blank. **It shipped with no label size on purpose**: at
+  that point the printhead was only bounded (96 ≤ head < 113 px), and guessing 112 px for a
+  14 mm label would silently clip the right edge — the failure `T15x50`'s `_note` records
+  on the D110. The head was pinned at 96 shortly after, and `T14x50` ships (see T-015
+  above).
   **Not measured, and the comments say so:** `paced: true` is the mode that worked
   (`IS_MAC` forced it; unpaced was never tried), `bundle: false` is the conservative
   default, and the absence of `pagesPerJob` is untested — `copies > 1` was never run on

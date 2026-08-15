@@ -58,10 +58,11 @@ either. Take one, both or neither.
 > **The N1's dpi is not a typo.** Niimbot sells it as a 300 dpi printer; against the label
 > it measures **203**. A row-numbered ruler printed on a 14 × 50 mm label was truncated
 > after row 350, and row 350 landed ~45 mm down the label (~7.8 px/mm, against 7.99 for
-> 203 dpi); at 300 dpi that row would have sat 29.6 mm down, leaving ~20 mm blank. The
-> N1 also ships with **no label size** in `registry.json` — its printhead width is only
-> bounded (96 ≤ head < 113 px), not measured, and guessing would silently clip the right
-> edge. Print with an explicit `{ w_px, h_px }` until it is measured.
+> 203 dpi); at 300 dpi that row would have sat 29.6 mm down, leaving ~20 mm blank.
+> Because of that, an N1 size is **203 dpi geometry, not 300** — `T14x50` now ships in
+> `registry.json`, and its `w_px` of **96 is the printhead, not the label**: 14 mm at
+> 203 dpi is 112 px, so ~1 mm on each side never prints. The 96 was pinned on hardware,
+> not guessed (see the entry's `_note`).
 
 These seven are in `registry.json` and tested end-to-end. Other printers on the same
 two protocol families — **`v4`**: B21 Pro / D110_M; **`b1`**: B21 / D11 / B21S —
@@ -140,6 +141,7 @@ The app picks the printer by passing a **`model`** and **`size`** object (both f
   | `T30x45` | B1 Pro | 30 × 45 | 300 | 354 × 531 |
   | `T40x60` | B1 Pro | 40 × 60 | 300 | 472 × 709 |
   | `T15x50` | D110 | 15 × 50 | 203 | **96** × 400 |
+  | `T14x50` | N1 | 14 × 50 | 203 | **96** × 400 |
 
   Two conventions in that table are not obvious and each has a `_note` in
   `registry.json` explaining why. **`T25x38` and `T30x45` are cable flags** (`T25*38+40`,
@@ -147,7 +149,10 @@ The app picks the printer by passing a **`model`** and **`size`** object (both f
   the printer registers on the gap itself and a short `h_px` still advances correctly.
   And **`T15x30`'s width is the printhead, not the label** — 15 mm would be 177 px and the
   head clips at 144. **`T15x50` has the same shape on the D110**: 15 mm at 203 dpi is
-  120 px and the head clips at 96.
+  120 px and the head clips at 96. **`T14x50` on the N1 lands on the same 96 × 400** —
+  same head, different label width — and is deliberately kept as its own entry: `T15x50`
+  carries an `offset_y_px` measured on a D110, and paper registration has never been
+  measured on an N1.
 
 **Auto-identification.** The B1 and B1 Pro advertise the same BLE name (`B1…`), but
 the driver **does identify which is which**: on connect it asks the printer for its

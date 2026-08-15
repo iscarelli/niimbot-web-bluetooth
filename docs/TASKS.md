@@ -10,48 +10,6 @@ and hardware confirmation is the maintainer's separate step.
 
 ## Active
 
-## [ ] T-015  N1 label size `T14x50` (printhead measured at 96 px)
-Why:     T-014 shipped the N1 with no size on purpose, because its printhead was only
-         bounded. It has since been pinned at 96 px on hardware, so the size can be
-         written. Without it the demo offers the N1 only sizes belonging to other printers.
-Vikunja: 998
-Files:   registry.json, README.md, CHANGELOG.md
-Do:
-  1. `registry.json`, `sizes`: add `T14x50` — label "14 × 50 mm (N1)", code "T14*50",
-     w_mm 14, h_mm 50, **w_px 96**, **h_px 400**, margin 6, dpi 203.
-     **Do NOT add `offset_y_px`.** See point 3.
-     `_note` must record:
-       - `w_px` 96 is the **PRINTHEAD, not the label**: 14 mm at 203 dpi is 112 px, so
-         ~1 mm on each side stays unprinted, and that is the printer, not a choice.
-       - How 96 was pinned, because it is two bounds rather than one reading: a ruler
-         print whose two-digit label `50` survived while three-digit `100` was cut puts
-         the head at ≥ ~96; five stacked bands (80/96/104/112/120 px) came out identical
-         from 96 up and narrower at 80, putting it at ≤ 96 and > 80. The intervals meet at
-         96, which is also the stride-aligned multiple of 8 — the same reasoning that
-         fixed the D110's head. Both on hardware, 2026-08-14.
-       - `h_px` 400 is arithmetic from the MEASURED 203 dpi (50 mm × 7.992), the same
-         standing as `T15x50`'s geometry.
-  2. `README.md`: add the `T14x50` row to the sizes table (N1, 14 × 50, 203 dpi, 96 × 400).
-     **The blockquote T-014 added under the supported-printers table says no size ships for
-     the N1 and why — that sentence is now false.** Rewrite it to say the size ships and
-     that its `w_px` is the printhead; keep the 203-vs-300-dpi caveat, which is still true.
-     Fix any count your change falsifies.
-  3. `T14x50` comes out geometrically identical to the D110's `T15x50` (96 × 400). They
-     stay separate entries and you must NOT copy `T15x50`'s `offset_y_px: -2`: that value
-     was measured on a D110 by a six-label sweep, and paper registration has never been
-     measured on an N1. Say this in the `_note` so the next reader does not "unify" them.
-  4. `CHANGELOG.md`: one bullet under `## [Unreleased]` → `### Added`, naming T-015. Do
-     NOT bump the version.
-Verify:
-  - `node -e "const r=require('./registry.json'), s=r.sizes.T14x50;
-     if(!s||s.w_px!==96||s.h_px!==400||s.dpi!==203||s.w_mm!==14) throw new Error('T14x50 wrong');
-     if('offset_y_px' in s) throw new Error('offset_y_px must not be set — never measured on N1');
-     console.log('registry ok')"`
-  - `node test/label-size.test.js` and `node test/label-memory.test.js` pass
-  - `node --check src/niimbot.js` (unchanged, but the cheapest gate — always run it)
-  Data only; no code path changes. Hardware confirmation of a print at this geometry is
-  the maintainer's step and is NOT part of this task.
-
 ## [ ] T-016  Stop the printhead clamp from failing silently, and unstale `package.json`
 Why:     two defects the T-013/T-014 implementers flagged. The clamp one is the worse
          kind: the demo's roll calculator passes `printhead_px: undefined` for any model
