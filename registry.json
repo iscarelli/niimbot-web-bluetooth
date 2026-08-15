@@ -70,6 +70,18 @@
       "label_type": 1,
       "speed": 1,
       "name_prefixes": ["D110"]
+    },
+    "n1": {
+      "_note": "Niimbot N1 — model id 3586 (0x0E02), advertised name e.g. 'N1-H324110115', firmware 4.07. Validated on hardware 2026-08-14: identifies and prints end to end (printer counter reached page 1, print 100%, feed 100%). protocol 'v4' is the FRAMING (0x55 0x55 ... 0xAA 0xAA), which works, exactly as the d110 entry explains; task 'b1' is the command sequence, and it is MEASURED — driven as v4 the printer answered the 13-byte SetPageSize and PageEnd with an undocumented 0xdb 06 and nothing else (the D110's refusal signature), driven as b1 every command acked and the page printed. dpi 203 is MEASURED against the label and CONTRADICTS the spec sheet: the N1 is sold as 300 dpi, but a row-numbered ruler was truncated after row 350 and row 350 landed ~45 mm down a 50 mm label (~7.8 px/mm, against 7.99 for 203 dpi; at 300 dpi it would have sat 29.6 mm down). density 3 / label_type 1 are the values the printer ACCEPTED (0x31 and 0x33 acked), not values compared against alternatives. No size entry ships for this model: the printhead width is only bounded (96 <= head < 113 px), not measured.",
+      "label": "Niimbot N1",
+      "id": 3586,
+      "dpi": 203,
+      "protocol": "v4",
+      "task": "b1",
+      "density": 3,
+      "label_type": 1,
+      "speed": 1,
+      "name_prefixes": ["N1"]
     }
   },
   "sizes": {

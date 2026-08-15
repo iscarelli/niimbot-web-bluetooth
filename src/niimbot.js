@@ -288,15 +288,20 @@
   // them apart. niim.blue asks the printer for its model id (PrinterInfo 0x40[08] →
   // 0x48, big-endian u16) and protocol version (PrinterStatusData 0xA5 → 0xB5, bytes
   // [11]*100+[12]), then picks the print task from that. We do the same to validate
-  // the caller's selection. Validated ids: B1 (4096), B1 Pro (4097); the B1 SE (4098)
-  // shares the b1 task. Other models exist but are untested → reported, not enforced.
-  // `paced` = needs the ~10 ms gap between unacked row writes (the 203 dpi B1 drops
-  // rows on a full-speed burst). The 300 dpi B1-Pro-class units (B1 Pro, M2-H) take
-  // the unpaced "fast" burst, so flow control is per-MODEL, not per-task.
+  // the caller's selection. That 0xB5 reply opcode is NOT universal: the D110 answers
+  // 0xB5 with too few bytes and the N1 answers 0xB4 entirely, so `protocolVersion`
+  // comes back null on both and no retry changes that — identification rests on the
+  // model id, not on the protocol version.
+  // Every id in the table below has printed on real hardware — B1 (4096), B1 Pro
+  // (4097), D11_H (528), D110 (2304), M2-H (4608), N1 (3586), B2 Pro (6912) — with
+  // ONE exception: the B1 SE (4098) is listed because it shares the b1 task and has
+  // never been seen on a printer here. Models outside the table are reported, not
+  // enforced.
   // The actual print width comes from the registry size's `w_px` (per label), so a
   // model-level printhead figure isn't needed here and is omitted to avoid confusing
-  // it with label width (e.g. B1 Pro 50×30 renders at 584 px though its printhead is
-  // 567 px). niimbluelib has the printhead resolutions if ever needed.
+  // it with label width (e.g. the M2-H reports a 576 px head in dc[03] while
+  // T50x30_m2h renders at 567 px — a deliberate ribbon margin, not the head).
+  // niimbluelib has the printhead resolutions if ever needed.
   // `paced` = needs the ~10 ms gap between unacked row writes (the 203 dpi B1 drops
   // rows on a full-speed burst). `bundle` = tolerates several row frames per BLE write
   // (frame bundling) — only enabled where validated; the B1 Pro garbles/stalls on
@@ -356,6 +361,29 @@
     // `bundle: false` is the conservative default, never measured — same standing as
     // the D11_H (528) entry.
     6912: { label: "Niimbot B2 Pro", task: "v4", dpi: 300, paced: false, bundle: false },
+    // N1, model id 3586 (0x0E02), advertised name e.g. "N1-H324110115", firmware 4.07.
+    // Printed end to end on hardware 2026-08-14.
+    // `task: "b1"` is MEASURED, and measured the hard way. Driven as `v4` the printer
+    // acked SetDensity (0x21→0x31), SetLabelType (0x23→0x33) and PrintStart 9b
+    // (0x01→0x02), then answered the 13-byte SetPageSize and PageEnd with `0xdb 06`
+    // and nothing else — the same refusal signature the D110 gives for a wrong task.
+    // Driven as `b1` (PrintStart 7b, PageStart 0x03→0x04, SetPageSize 6b 0x13→0x14)
+    // every command acked, the page counter reached 1 at 100%/100%, and PrintEnd
+    // (0xf3→0xf4) closed the job.
+    // `dpi: 203` is MEASURED against the label, and it CONTRADICTS the spec sheet: the
+    // N1 is SOLD AS 300 dpi. Do not "correct" this line. A row-numbered ruler printed
+    // onto a 14 × 50 mm label was cut off after row 350, and row 350 landed ~45 mm down
+    // a 50 mm label → ~7.8 px/mm, against 7.99 for 203 dpi. At 300 dpi (11.81 px/mm)
+    // row 350 would have sat 29.6 mm down, leaving ~20 mm of blank label.
+    // `paced: true` is the mode that WORKED, not a proven requirement: the capture ran
+    // paced only because IS_MAC forces it, and unpaced was never tried on this model —
+    // same standing as the D110 (2304) entry.
+    // `bundle: false` is the conservative default, never measured here.
+    // No `pagesPerJob`, and that ABSENCE is UNTESTED — `copies > 1` was never run on
+    // this printer. The D110 is the same task, the same dpi and the same small-label
+    // family, and it acks N pages while printing only page 1. Measure before trusting
+    // a multi-page job here.
+    3586: { label: "Niimbot N1",     task: "b1", dpi: 203, paced: true,  bundle: false },
   };
   let printerInfo = null;   // { modelId, protocolVersion, label, task, dpi } after connect
 

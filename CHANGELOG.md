@@ -6,6 +6,26 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 ### Added
+- **T-014 — Niimbot N1 (model id 3586)**: the seventh printer validated on real hardware
+  (2026-08-14, capture in `docs/NOTES.md` § *N1*). `MODEL_IDS` gets a `3586` entry
+  (`task: "b1"`, `dpi: 203`, `paced: true`, `bundle: false`) and `registry.json` a `n1`
+  model (`name_prefixes: ["N1"]`, so the demo's chooser and dropdown find it).
+  `task: "b1"` is measured: driven as `v4` the printer answered the 13-byte SetPageSize
+  and PageEnd with an undocumented `0xdb 06` and nothing else — the D110's refusal
+  signature, now a two-model tell — while driven as `b1` every command acked, the page
+  counter reached 1 at 100 %/100 % and PrintEnd (`0xf3→0xf4`) closed the job.
+  **`dpi: 203` is measured and contradicts the spec sheet: the N1 is sold as 300 dpi.**
+  A row-numbered ruler on a 14 × 50 mm label was truncated after row 350, and row 350
+  landed ~45 mm down (~7.8 px/mm, against 7.99 for 203 dpi); at 300 dpi it would have
+  sat 29.6 mm down leaving ~20 mm blank. **No label size ships for the N1**: the
+  printhead is only bounded (96 ≤ head < 113 px), and guessing 112 px for a 14 mm label
+  would silently clip the right edge — the failure `T15x50`'s `_note` records on the
+  D110. Print with an explicit `{ w_px, h_px }` until the head is measured.
+  **Not measured, and the comments say so:** `paced: true` is the mode that worked
+  (`IS_MAC` forced it; unpaced was never tried), `bundle: false` is the conservative
+  default, and the absence of `pagesPerJob` is untested — `copies > 1` was never run on
+  this printer, and the D110 is the same task, dpi and label family and prints only
+  page 1.
 - **T-013 — Niimbot B2 Pro (model id 6912)**: the sixth printer validated on real
   hardware (2026-08-14, capture in `docs/NOTES.md` § *B2 Pro bring-up*), and the first
   brought up with **no driver change at all** — it printed end to end from the console
@@ -36,6 +56,18 @@ All notable changes to this project are documented here. The format is based on
   runs on a `v*.*.*` tag push, so this is unverified end-to-end until the next release.
 
 ### Fixed
+- **T-014**: three stale claims in the `── Printer identification ──` comment block above
+  `MODEL_IDS` (`src/niimbot.js`). It listed only the B1 and B1 Pro as validated ids when
+  every id in the table except the **B1 SE (4098)** has now printed on hardware — the B1
+  SE is the one that never has. The sentence defining `paced` appeared **twice**; the
+  shorter, earlier copy is gone and the fuller one (which also defines `bundle` and
+  `pagesPerJob`) stays. And the printhead example asserted "B1 Pro … printhead is 567 px",
+  which `docs/NOTES.md` records as an **open** question (Vikunja #970) — it now uses the
+  M2-H, where both numbers are known: the printer reports a 576 px head in `dc[03]` while
+  `T50x30_m2h` renders at 567 px as a deliberate ribbon margin. The protocol-version line
+  also now says the `0xA5` reply opcode is not universal (the D110 answers `0xB5` with too
+  few bytes, the N1 answers `0xB4`), so `protocolVersion` is `null` on both and no retry
+  changes that. Comments only — no executable line changed.
 - **T-012**: `demo/index.html` sent iOS visitors to a browser that does not exist. The
   top banner and the "Web Bluetooth unavailable" message both said only "Chrome/Edge",
   which is false advice on iOS since neither Safari nor Chrome there expose Web
