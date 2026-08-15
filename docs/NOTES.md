@@ -960,3 +960,28 @@ because assuming a task family behaves alike broke the B1 Pro in v1.3.3 and then
 time on the D110. The useful lesson is cheaper than a rule: **the N1's cap was found because
 someone spent three labels asking, rather than reasoning that "3 copies obviously works".** It
 is three labels against a defect that reports 100 % and hands you one label.
+
+### `offset_y_px: -2` — and the sweep answered a second question nobody asked it
+
+The first real print at the shipped 96 × 400 geometry came out clipped at the BOTTOM. Two
+causes fit that symptom and the paper cannot tell them apart: either the printable area is
+shorter than 400 rows (so `h_px` is too big), or the print starts late and the content is
+pushed off the end (so it wants a negative `offset_y_px`).
+
+The six-candidate sweep from *Calibrating a print offset* separates them, and the separation
+is built into the target rather than into the reading: a bar flush against row 0, a bar flush
+against the last row, a frame inset 12 px, and the candidate value printed large in the
+middle. **If some label shows both bars, it is registration. If none does — the top bar
+thinning away as the bottom bar arrives — the loss is only changing ends, and the printable
+area is genuinely short.**
+
+`-2` came out best, which settles it as registration. Note that this is the same value the
+D110 uses and it was **measured independently on an N1**, not copied — `T15x50`'s note and
+T-015 both explicitly forbade copying it, and that prohibition is what made the measurement
+happen instead of an assumption.
+
+**The unasked question it also answered: the dpi, exactly.** A 400-row page fitting a 50 mm
+label with 2 rows of correction means the printable area IS 400 rows over 50 mm — **8.0 px/mm,
+dead on 203 dpi**. The ruler print had put it at ~7.8 px/mm from a "5 mm short of the edge"
+eyeball; this lands on the nominal value from a completely different measurement, with no
+estimation in it. Two independent routes, and the spec sheet's 300 dpi is out by 46 %.
