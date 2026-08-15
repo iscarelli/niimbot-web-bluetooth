@@ -842,8 +842,9 @@ it; `lastUnsolicited` takes it and drops it.
 
 ## N1: the first printer here that is not a table row (2026-08-14)
 
-Model id **3586** (`48: 0e 02`), advertised `N1-H324110115`, firmware 4.07. **Nothing has
-been printed on it.** Three divergences, any one of which the current code gets wrong:
+Model id **3586** (`48: 0e 02`), advertised `N1-H324110115`, firmware 4.07, **`b1` task,
+203 dpi** — both measured, see below. Three divergences, any one of which the current code
+gets wrong:
 
 **1. `0xA5` answers with opcode `0xB4`, not `0xB5`** — payload `00 96`. `detectPrinter()`
 (`src/niimbot.js:344`) waits on `0xb5`, so it burns its 1 s timeout and reports
@@ -869,3 +870,57 @@ and the RFID read `0x1a[01]` → `0x1b` (barcode `04232207`, 150 labels total, 4
 the same as the roll's total-label count from the RFID. It may be that `0xA5` means something
 else entirely on this family, or it may be chance on one capture. One observation is not a
 decoding.
+
+### The task: `b1`, and the wrong guess cost exactly one label
+
+Driven as `v4` the N1 reproduced the D110's refusal signature command for command: `0x21→0x31`,
+`0x23→0x33` and `PrintStart 9b 0x01→0x02` all acked, then the 13-byte `SetPageSize` and
+`PageEnd` each drew a `0xdb 06` and nothing else. Driven as `b1` — `PrintStart` 7b,
+`PageStart 0x03→0x04`, `SetPageSize` 6b `0x13→0x14` — every command acked, the page counter
+reached 1 at 100 %/100 %, and `PrintEnd 0xf3→0xf4` closed it. The driver refused to claim the
+failed `v4` run had printed, which is the design working.
+
+Two things worth carrying forward. **`0xdb 06` is now a two-model signature**, not a D110
+quirk — it is the reliable tell for "right framing, wrong task". And **the `b1Handshake` only
+runs when `connect()` is called with a `task: "b1"` model**, while `connect()` returns early
+if a link is already open; so a console test that identifies first and prints second silently
+skips the handshake. Every N1 test therefore had to start with `disconnect()`.
+
+### 203 dpi — measured, and it contradicts the spec sheet
+
+**The N1 is sold as 300 dpi. It measures 203.** That is not a rounding argument: at 300 dpi a
+pixel is 0.085 mm and at 203 it is 0.125 mm, a factor of 1.46 on every dimension.
+
+Getting there took four labels, and three of them were wasted on tests that could not
+distinguish the hypotheses. Recording the dead ends, because the shape of the mistake repeats:
+
+1. **591 rows solid black** (50 mm at 300 dpi) → the whole label came out black. Useless:
+   true under both hypotheses, since at 203 dpi the first 400 rows already fill the label.
+2. **591 rows, bar in the last 60** → label blank, bar nowhere. This *looks* decisive and is
+   not. It says the bar fell outside the printable area, which 203 dpi explains (rows > 400
+   are discarded) but so does *300 dpi with a printable area shorter than 50 mm* — and this
+   project's own notes warn that `h_px` is the printable area, not the label pitch (see
+   *Cable flags*, above). An argument from absence has two causes here, not one.
+3. **The test that worked: print a numbered ruler and let the printer truncate it.** Ticks
+   every 50 rows, each labelled with its row number. The last one printed was **350**, and it
+   landed ~45 mm down a 50 mm label → **~7.8 px/mm**, against 7.99 for 203 dpi. At 300 dpi row
+   350 would sit 29.6 mm down, leaving ~20 mm of blank label — not a judgement call.
+
+**The rule: an absent mark has more than one cause, a present mark at a predicted position has
+one.** Tests 1 and 2 asked "did it fit?"; test 3 asked "where did it land?", and only the
+second kind of question discriminates. This is the same *print the parameter on the label*
+technique that settled the D110's offset sweep, and it is the third time it has been the thing
+that worked.
+
+### The printhead is bounded, not pinned: 96 ≤ head < 113 px
+
+Free, from the ruler print's own failure: three-digit labels came out as two digits (`100` →
+`10`, `350` → `35`) while the two-digit `50` survived. The text starts at x = 62 and each bold
+30 px digit is ~17 px, so two digits end near 96 and three near 113 — the head clips between
+them. 96 px would match the D110 exactly, which is the other 203 dpi small-label unit here,
+but matching is not measuring.
+
+**This is why the N1 ships with no size entry.** A 14 mm label at 203 dpi is 112 px, which sits
+inside the uncertainty; setting `w_px: 112` against a 96 px head would lose ~2 mm on the right
+with nothing reporting it — exactly what `T15x50`'s `_note` records happening on the D110,
+where 120 px was sent and 96 came out.
