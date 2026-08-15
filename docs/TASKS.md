@@ -10,56 +10,6 @@ and hardware confirmation is the maintainer's separate step.
 
 ## Active
 
-## [ ] T-021  `drawTest` clips text sideways on a narrow label
-Why:     `drawTest` sizes its font from the height alone — `size.h_px * 0.16`. On the new
-         `T14x50` (96 × 400) that is a 64 px font on a 96 px wide canvas, so the text runs
-         off both edges with no error at all: you just find part of a word on the paper.
-         Found on an N1 on 2026-08-15, on the demo's own "Connect and print" button.
-Vikunja: 1003
-Files:   demo/index.html, CHANGELOG.md
-Do:
-  **The fix already exists in this file.** `drawReal`'s `put()` helper shrinks a string
-  until it fits `W - 2 * pad`, and the comment above it describes this exact bug ("Width
-  clips as silently as height does… you would just find half a word on the paper"). Someone
-  already paid for this lesson and applied it in one place only. Do not invent a second
-  approach — reuse that one.
-
-  1. `demo/index.html`, `drawTest` (~line 373): the text must fit the canvas WIDTH as well
-     as derive from its height. Keep `Math.round(size.h_px * 0.16)` as the STARTING size —
-     it is what makes the label look the same on every landscape size — then shrink until
-     `measureText(text).width` fits the drawable width, with the same floor `drawReal` uses
-     (`fs > 6`). `drawTest` centres its text rather than left-aligning it, so compute the
-     drawable width from the same margin it already uses (`size.margin || 10`), not from
-     `drawReal`'s `pad`.
-     If the shrink-to-fit logic is worth sharing between the two functions, factor it into
-     one small helper and use it from both — but only if that comes out genuinely simpler.
-     Two call sites is not automatically a reason to abstract; a duplicated four-line loop
-     that both sites can read is better than a helper neither site can follow.
-
-  2. The comment at `drawTest`'s neighbour (~line 401) claims sizes as fractions of `h_px`
-     "fit every label in the registry without a per-size layout". That is what broke: it
-     holds for landscape labels and `T14x50` is the first portrait one (400 tall against
-     96 wide). Correct the claim where it is stated — do not delete the reasoning, it
-     explains why the layout has no per-size branches, which is still the design.
-
-  3. `CHANGELOG.md`: one bullet under `## [Unreleased]` → `### Fixed`, naming T-021.
-     User-visible: the demo's own test print was losing text on the narrowest labels.
-Verify:
-  - Extract and syntax-check the demo's inline scripts with the python snippet in
-    `CLAUDE.md` (§ Verify commands) — every block returns 0. **Syntax gate only.**
-  - Headless geometry check, no printer and no browser: this is the assertion that
-    actually proves the fix, so do not skip it. In Node, stub a minimal 2D context that
-    records the font and returns a plausible `measureText` width (≈ `0.55 * fontPx *
-    text.length` is close enough for bold sans), run `drawTest`'s sizing logic against
-    `{ w_px: 96, h_px: 400, margin: 6 }` with the text `"NIIMBOT TEST"`, and assert the
-    chosen font size yields a measured width ≤ `96 - 2 * 6`. Assert too that a landscape
-    size (`{ w_px: 584, h_px: 354, margin: 10 }`) still gets the UNSHRUNK
-    `Math.round(354 * 0.16)` = 57 px, so the fix does not quietly change every other label.
-    Keep the harness under `test/` per `CLAUDE.md`; name it `test/draw-fit.test.js`.
-  - `node --check test/draw-fit.test.js` and run it — it must PASS.
-  A real print at `T14x50` through the demo is the maintainer's step and is outstanding.
-  Your harness proves the font shrinks; it does not prove the label looks right.
-
 ## [ ] T-020  The registry still asserts what `NOTES.md` retracted (M2-H printhead)
 
 ## [ ] T-020  The registry still asserts what `NOTES.md` retracted (M2-H printhead)

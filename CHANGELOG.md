@@ -91,6 +91,20 @@ All notable changes to this project are documented here. The format is based on
   runs on a `v*.*.*` tag push, so this is unverified end-to-end until the next release.
 
 ### Fixed
+- **T-021 — the demo's test print lost text off the sides of a narrow label**: `drawTest`
+  sized its font from the label height alone (`h_px * 0.16`), which is fine on landscape
+  labels and wrong on the first portrait one — on the N1's `T14x50` (**96 × 400 px**) that
+  is a 64 px font on a 96 px wide canvas, so "NIIMBOT TEST" ran off both edges. A canvas
+  draws past its own edge without an error and the driver has nothing to complain about,
+  so the only symptom was **half a word on the paper** while everything reported success
+  (found on an N1, 2026-08-15, from the demo's own "Connect and print" button). The
+  height-derived size is still the STARTING size, so every landscape label looks exactly
+  as before; it is now shrunk until `measureText` fits between the margins, with a 6 px
+  floor. This is the same shrink-to-fit `drawReal` already did for its own lines, now a
+  shared `fitFont()` helper used by both. Verified headlessly by
+  `test/draw-fit.test.js` (font fits the drawable width at 96 × 400; a 584 × 354 label
+  still gets the unshrunk 57 px). **A real print at `T14x50` is outstanding** — the
+  harness proves the font shrinks, not that the label looks right.
 - **T-016 — the demo's printhead clamp stops failing silently, and `package.json` names
   every validated model**: the roll calculator's hardcoded `PRINTHEAD_PX` map held only
   four of the registry's seven models, so picking a **B2 Pro, D11_H or N1** passed

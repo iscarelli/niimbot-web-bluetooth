@@ -365,6 +365,20 @@
 
     $("model").addEventListener("change", () => { populateSizes(); populateDensity(); refresh(); });
 
+    // Width clips as silently as height does: a canvas draws past its own edge without
+    // an error, so an oversized string just loses its ends on the paper. Both draw
+    // functions size their text from `h_px`, so on a PORTRAIT label (T14x50 is 96 × 400)
+    // the height-derived size is far wider than the label — hence: shrink until it fits.
+    // Sets `ctx.font` to the size it chose and returns it. Floor of 6 px, below which a
+    // wrong-looking label beats an unreadable one.
+    function fitFont(ctx, txt, px, maxW, bold) {
+      const font = (n) => `${bold ? "bold " : ""}${n}px sans-serif`;
+      let fs = Math.round(px);
+      ctx.font = font(fs);
+      while (fs > 6 && ctx.measureText(txt).width > maxW) { fs -= 1; ctx.font = font(fs); }
+      return fs;
+    }
+
     // `light` skips the corner-to-corner diagonals. The diagonals touch nearly every
     // row, so they defeat run-length and blow the packet count up to ~one-per-row
     // (worst case for send time). A realistic label (frame + text, mostly white)
@@ -385,7 +399,11 @@
         x.stroke();
       }
       x.fillStyle = "#000";
-      x.font = `bold ${Math.round(size.h_px * 0.16)}px sans-serif`;
+      // h_px * 0.16 is the STARTING size — it is what makes the label look the same on
+      // every landscape size — and `fitFont` only takes it down if the text is too wide
+      // for the frame. The text is centred, so the drawable width is the same margin the
+      // frame uses, on both sides.
+      fitFont(x, text, size.h_px * 0.16, c.width - 2 * m, true);
       x.textAlign = "center"; x.textBaseline = "middle";
       x.fillText(text, c.width / 2, c.height / 2);
       return c;
@@ -398,10 +416,16 @@
     // This one is deliberately ordinary: frame, heading, two data lines, a barcode band.
     // Every band is a run of IDENTICAL rows, which is exactly what run-length collapses.
     //
-    // Sizes are fractions of h_px, so it fits every label in the registry without a
-    // per-size layout — and a cursor refuses to run past the bottom rather than letting
-    // the canvas clip in silence, which is how a 354 px card once printed 365 px of
-    // content and lost the last line's descenders (docs/NOTES.md).
+    // Sizes are fractions of h_px, so there is no per-size layout: one set of ratios
+    // covers every label in the registry. That works for the VERTICAL rhythm on any
+    // label, and for width only on landscape ones — h_px says nothing about how wide the
+    // paper is, and on a portrait label (T14x50 is 96 wide by 400 tall) a fraction of the
+    // height is wider than the whole label. Width is handled separately, by `fitFont`
+    // shrinking each line; keeping the ratios is still the design.
+    // Both directions clip in silence if unchecked, so both are guarded: a cursor refuses
+    // to run past the bottom rather than letting the canvas clip, which is how a 354 px
+    // card once printed 365 px of content and lost the last line's descenders
+    // (docs/NOTES.md).
     function drawReal(size, text, target) {
       const c = target || $("preview");
       c.width = size.w_px; c.height = size.h_px;
@@ -417,16 +441,12 @@
         if (y + px > H - m) throw new Error(`"${what}" does not fit this label: ${y + px} > ${H - m} px`);
         const at = y; y += px; return at;
       };
-      // Width clips as silently as height does, and a 15 mm label is only 144 px wide,
-      // so "NIIMBOT TEST" at the heading size would run off the right edge with no error
-      // — you would just find half a word on the paper. Shrink to fit instead, but
-      // reserve the ORIGINAL height so shrinking one line never shifts the ones below it.
+      // A 15 mm label is only 144 px wide, so "NIIMBOT TEST" at the heading size would
+      // run off the right edge with no error — see `fitFont`. Shrink to fit, but reserve
+      // the ORIGINAL height so shrinking one line never shifts the ones below it. The
+      // text is left-aligned from `pad`, which is wider than the frame margin `m`.
       const put = (txt, px, bold) => {
-        const font = (n) => `${bold ? "bold " : ""}${n}px sans-serif`;
-        const maxW = W - 2 * pad;
-        let fs = Math.round(px);
-        x.font = font(fs);
-        while (fs > 6 && x.measureText(txt).width > maxW) { fs -= 1; x.font = font(fs); }
+        fitFont(x, txt, px, W - 2 * pad, bold);
         const at = fit(Math.round(px * 1.35), txt);
         x.fillStyle = "#000";
         x.textAlign = "left"; x.textBaseline = "top";
