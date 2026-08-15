@@ -6,6 +6,24 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 ### Added
+- **T-017 — bring-up harness for the browser console (`test/bringup.mjs`)**: the tests that
+  actually brought up the B2 Pro and the N1 on 2026-08-14, as one call each, loaded from the
+  demo page's console with `await import("../test/bringup.mjs")` (relative on purpose — it
+  resolves the same on `localhost:8080/demo/` and on the Pages site). Steps: `info()`
+  (spends no labels; decodes the printhead width from `0xDC[03]` and the ASCII serial from
+  `0x40[0b]`, and says plainly when the model refuses the head report, as the N1 does),
+  `dpi({ h_mm })` (the row-numbered ruler that settled the N1 — it asks *where a mark
+  landed*, not *whether it fit*, because an absent mark has more than one cause),
+  `head({ widths })` (stacked bands bounding the head from both sides), `copies({ n })`
+  (does a multi-page job print every page, or only page 1 like the D110?), `task()` and
+  `help()`. Every step drops the link first — `connect()` returns early on an open link and
+  `b1Handshake()` only runs inside `connect()`, so a step reusing a connection silently
+  skips the handshake the D110 needs to print at all. **No step decides whether a print
+  succeeded**: it logs what to look at, sends, and states the reading rule; the paper
+  decides. `task()` deliberately does not auto-retry. Ships as a browser-side ES module with
+  zero dependencies and no build; `package.json`'s `files` whitelist keeps `test/` out of
+  npm. Nothing in `src/niimbot.js` or the demo changed, and **the harness has not yet been
+  run against a printer** — that is the maintainer's step.
 - **T-015 — N1 label size `T14x50`**: `registry.json` gains the N1's first size —
   14 × 50 mm, 203 dpi, **96 × 400 px**, margin 6 — so the demo stops offering the N1 only
   sizes that belong to other printers. **`w_px` 96 is the printhead, not the label**:

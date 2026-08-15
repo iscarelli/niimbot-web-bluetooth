@@ -38,6 +38,7 @@ label. (Web Bluetooth needs HTTPS — the live demo and `localhost` both qualify
 | `docs/NOTES.md` | Measurements, negative results and the reasoning behind the numbers. | — |
 | `demo/index.html` | Standalone demo: pair and print a test label. | — |
 | `test/*.test.js` | Dependency-free Node harnesses — no printer, no runner. | — |
+| `test/bringup.mjs` | Bring-up harness for the **browser** console (needs a printer). | — |
 
 The two `label-*.js` files ship but are **inert until you load them**: they attach
 `window.NiimbotLabelMemory` / `window.NiimbotLabelSize` and the driver never looks for
@@ -75,6 +76,24 @@ are likely compatible but **untested**. To try one, add a model entry to `regist
 > that 15 mm implies** — the head is narrower than the label, so ~1.4 mm on each side
 > never prints. That was settled by printing solid black at 177 and at 144 and getting
 > identical widths, and it agrees with what the printer reports in `probe(0xdc,[0x03])`.
+
+### The bring-up harness
+
+Doing that by hand means pasting a snippet per round. `test/bringup.mjs` is the same
+tests as one call each. Open the demo page and, in the browser console:
+
+```js
+await import("../test/bringup.mjs")   // attaches window.bringup — then: bringup.help()
+```
+
+It drives a **throwaway model** built from `bringup.config`, so a printer the registry has
+never heard of can be tested with nothing to revert if the guess is wrong. The steps:
+`info()` (spends no labels — model id, the `0x40` info reads, and the printhead width when
+the printer reports it), `dpi({ h_mm })`, `head({ widths })`, `copies({ n })` and `task()`.
+**No step concludes that a print succeeded** — each logs what to look at, sends, and then
+states the reading rule; the paper decides. Those rules, and why the obvious variants of
+each test do *not* discriminate, live in the file's comments and in `docs/NOTES.md`
+(§ *B2 Pro bring-up*, § *N1*).
 
 > The driver auto-detects the connected model (see *Selecting your printer*), so it
 > picks the right `task` and flow control even though several models share a BLE name.
