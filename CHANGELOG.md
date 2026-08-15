@@ -5,6 +5,30 @@ All notable changes to this project are documented here. The format is based on
 [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
+### Added
+- **T-013 — Niimbot B2 Pro (model id 6912)**: the sixth printer validated on real
+  hardware (2026-08-14, capture in `docs/NOTES.md` § *B2 Pro bring-up*), and the first
+  brought up with **no driver change at all** — it printed end to end from the console
+  before it was ever in the registry. `MODEL_IDS` gets a `6912` entry (`task: "v4"`,
+  `dpi: 300`, `paced: false`, `bundle: false`); `registry.json` gets a `b2pro` model
+  (`name_prefixes: ["B2"]`, so the demo's chooser and dropdown now find it) and a
+  `T50x30_b2pro` size (576 × 354).
+  `task: "v4"` is measured, not assumed: the 13-byte SetPageSize (`0x13→0x14`) and
+  PageEnd (`0xe3→0xe4`) — the two commands the D110 goes silent on when it is driven as
+  `v4` — both acked here, and PrintEnd (`0xf3→0xf4`) closed the job. `dpi: 300` is
+  measured against the label rather than a datasheet: a 354 px block filled a 30 mm
+  label exactly and left ~20 mm of white beside it (at 203 dpi it would have been 44 mm
+  and overrun). **No `pagesPerJob`, and that absence is measured too** — `copies: 3`
+  printed three labels with the printer's counter stepping page 1 → 2 → 3, which is
+  exactly where the D110 stops at one. `T50x30_b2pro`'s `w_px` of 576 has two
+  independent sources agreeing: the printer reports it itself via
+  `probe(0xdc, [0x03])` (`de` bytes 4-5 = `02 40`), and 576 printed edge to edge on a
+  50 mm label. It is the **fourth** 50×30 entry and the **third** at 300 dpi — pair a
+  size with its model, not just its dpi.
+  **Not measured, and the code comments say so:** `paced: false` and `bundle: false`.
+  The capture ran paced only because `IS_MAC` forces it; unpaced was never tried on
+  this unit.
+
 ### Changed
 - **T-011**: bumped the release workflow's `actions/checkout` and `actions/setup-node`
   pins from `@v4` to `@v7` (`.github/workflows/release.yml`), ahead of GitHub retiring

@@ -11,8 +11,8 @@ printers — print straight from the browser, with no intermediary app and no
 dependencies.
 
 Reverse-engineered and validated on real hardware (**Niimbot B1**, **B1 Pro**,
-**M2-H**, **D11_H** and **D110**). Two print-task variants over the same frame cover
-the **B1 Pro / D11_H / B21 Pro / D110_M** line (300 dpi, `v4`) and the
+**B2 Pro**, **M2-H**, **D11_H** and **D110**). Two print-task variants over the same
+frame cover the **B1 Pro / B2 Pro / D11_H / B21 Pro / D110_M** line (300 dpi, `v4`) and the
 **B1 / M2-H / B21 / D110** line (`b1`, mostly protocol 3) — chosen automatically per
 connected printer.
 
@@ -48,12 +48,13 @@ either. Take one, both or neither.
 | Model | `task` | dpi | Model id | Status |
 |---|---|---|---|---|
 | **Niimbot B1 Pro** | `v4` | 300 | 4097 | ✅ Validated on real hardware |
+| **Niimbot B2 Pro** | `v4` | 300 | 6912 | ✅ Validated on real hardware |
 | **Niimbot B1** | `b1` | 203 | 4096 | ✅ Validated on real hardware |
 | **Niimbot M2-H** | `b1` | 300 | 4608 | ✅ Validated on real hardware |
 | **Niimbot D11_H** | `v4` | 300 | 528 | ✅ Validated on real hardware |
 | **Niimbot D110** | `b1` | 203 | 2304 | ✅ Validated on real hardware |
 
-These five are in `registry.json` and tested end-to-end. Other printers on the same
+These six are in `registry.json` and tested end-to-end. Other printers on the same
 two protocol families — **`v4`**: B21 Pro / D110_M; **`b1`**: B21 / D11 / B21S —
 are likely compatible but **untested**. To try one, add a model entry to `registry.json`
 (copy an existing model, set its `task`/`dpi`/`id`); please report results.
@@ -82,12 +83,13 @@ The app picks the printer by passing a **`model`** and **`size`** object (both f
   (384×240 @ 203 dpi) than on the B1 Pro (584×354 @ 300 dpi) — always pair a size with
   a model of the **same dpi**.
 
-  ⚠ **Same dpi is not enough — pair by MODEL.** The registry ships *three* 50×30 mm
-  entries and two of them are 300 dpi:
+  ⚠ **Same dpi is not enough — pair by MODEL.** The registry ships *four* 50×30 mm
+  entries and three of them are 300 dpi:
 
   | id | model | `w_px` | why that width |
   |---|---|---|---|
   | `T50x30` | B1 Pro | 584 | the printable width used on that printer |
+  | `T50x30_b2pro` | **B2 Pro** | **576** | the printhead width the printer reports itself |
   | `T50x30_m2h` | **M2-H** | **567** | a deliberate ~1.4 mm right margin — see below |
   | `T50x30_b1` | B1 | 384 | 203 dpi |
 
@@ -95,8 +97,8 @@ The app picks the printer by passing a **`model`** and **`size`** object (both f
   the D11_H's *printhead*, not 15 mm of label. Offer it for any other 300 dpi printer and
   you get a 12 mm-wide print on a wider label.
 
-  Filtering only by dpi offers both 300 dpi entries for either printer, and picking the
-  wrong one is silent. **`w_px` is not "the printhead width"** — the driver sends it as
+  Filtering only by dpi offers all three 300 dpi entries for any of those printers, and
+  picking the wrong one is silent. **`w_px` is not "the printhead width"** — the driver sends it as
   `W` in `SetPageSize`, the printer prints columns `0 … W-1`, and anything past the head
   is dropped with no error. On the M2-H, 567 is not a head limit at all: that printer is
   **thermal transfer (it uses a ribbon)**, the ribbon drifts slightly, and the narrower
@@ -121,6 +123,7 @@ The app picks the printer by passing a **`model`** and **`size`** object (both f
   | id | printer | mm | dpi | px (`w_px × h_px`) |
   |---|---|---|---|---|
   | `T50x30` | B1 Pro | 50 × 30 | 300 | 584 × 354 |
+  | `T50x30_b2pro` | B2 Pro | 50 × 30 | 300 | 576 × 354 |
   | `T50x30_b1` | B1 | 50 × 30 | 203 | 384 × 240 |
   | `T50x30_m2h` | M2-H | 50 × 30 | 300 | 567 × 354 |
   | `T15x30` | D11_H | 15 × 30 | 300 | **144** × 354 |
@@ -142,8 +145,8 @@ the driver **does identify which is which**: on connect it asks the printer for 
 model id (`PrinterInfo 0x40[08]`) and protocol version (`PrinterStatusData 0xA5`) —
 exactly how niim.blue tells them apart — and exposes it as **`Niimbot.printer`**
 (`{ modelId, protocolVersion, label, task, dpi }`). Validated ids: **B1 = 4096**,
-**B1 Pro = 4097**, **M2-H = 4608**, **D11_H = 528**, **D110 = 2304**. Two safeguards
-follow:
+**B1 Pro = 4097**, **B2 Pro = 6912**, **M2-H = 4608**, **D11_H = 528**,
+**D110 = 2304**. Two safeguards follow:
 
 - **`Niimbot.identify(model)`** connects and returns that info *without* printing, so
   the app can auto-select the right model/size (the demo does this — match `model.id`
@@ -240,7 +243,7 @@ connecting — if the model's `task`/`dpi` does not match the printer that answe
   ```
 
   **What is not established:** which value suits which stock, and whether every model
-  accepts all five — all four ship with a default of 3, and only the D11_H has been
+  accepts all five — all six ship with a default of 3, and only the D11_H has been
   measured at all. If you compare values on paper, **do not print solid black**: a fully
   burned dot cannot get blacker, and a black rectangle will look identical at 1 and at 5.
   Use fine reversed detail (white bars 1–8 px knocked out of black) and count which steps
@@ -391,7 +394,7 @@ Serve the repo over localhost and open the demo (Web Bluetooth needs HTTPS or
 node demo/serve.mjs          # then open http://localhost:8080/demo/index.html
 ```
 
-The demo has a **Model** dropdown (all five validated printers), a **Label** dropdown that
+The demo has a **Model** dropdown (all six validated printers), a **Label** dropdown that
 only offers sizes matching the selected model's dpi — mirroring the selection rules above
 — and a **Density** picker (1–5) that starts at the model's default and resets when the
 model changes, because a heat value chosen for one printer means nothing on another.
@@ -539,7 +542,7 @@ no app:
 ## Credits
 
 Protocol reverse-engineered on the B1 Pro, and since validated on real hardware
-across five printers — **B1**, **B1 Pro**, **M2-H**, **D11_H** and **D110**; the
+across six printers — **B1**, **B1 Pro**, **B2 Pro**, **M2-H**, **D11_H** and **D110**; the
 [model table](#supported-printers) says which task each one speaks. External
 community reference: [niim.blue](https://niim.blue) / niimbluelib.
 

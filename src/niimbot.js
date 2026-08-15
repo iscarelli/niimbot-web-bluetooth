@@ -334,6 +334,28 @@
     // is per-MODEL, not per-task — do not add the field to another b1-task model
     // without measuring it broken the same way.
     2304: { label: "Niimbot D110",   task: "b1", dpi: 203, paced: true,  bundle: false, pagesPerJob: 1 },
+    // B2 Pro, model id 6912 (0x1B00), advertised name e.g. "B2 Pro-I304050285",
+    // protocol 5. Printed end to end on hardware 2026-08-14.
+    // `task: "v4"` is MEASURED: SetDensity (0x21→0x31), SetLabelType (0x23→0x33),
+    // PrintStart (0x01→0x02), the 13-byte SetPageSize (0x13→0x14) and PageEnd
+    // (0xe3→0xe4) all acked, and PrintEnd (0xf3→0xf4) closed the job. None of the
+    // v4-specific commands went silent — that silence is the D110's tell for a wrong
+    // task.
+    // `dpi: 300` is MEASURED against the label itself, not read off a datasheet: a
+    // 354 px tall block filled a 30 mm label exactly, and a 354 px wide block left
+    // ~20 mm of white beside it. At 203 dpi the same block would have been 44 mm and
+    // overrun the label.
+    // No `pagesPerJob`, and that ABSENCE is measured too: `copies: 3` printed three
+    // labels with the printer's own counter stepping page 1 → 2 → 3.
+    // `paced: false` is NOT a measurement — it is the absence of one. The capture ran
+    // `paced` only because `IS_MAC` forces it; unpaced was never tried on this unit.
+    // `false` is chosen over `true` because the field's ONLY effect is
+    // warnOverrideVsModel(), whose text asserts the model "NEEDS pacing … it drops rows
+    // on an unpaced burst" — a claim nobody here has evidence for on this model. Do not
+    // read this `false` as measured.
+    // `bundle: false` is the conservative default, never measured — same standing as
+    // the D11_H (528) entry.
+    6912: { label: "Niimbot B2 Pro", task: "v4", dpi: 300, paced: false, bundle: false },
   };
   let printerInfo = null;   // { modelId, protocolVersion, label, task, dpi } after connect
 

@@ -12,6 +12,18 @@
       "speed": 1,
       "name_prefixes": ["B1"]
     },
+    "b2pro": {
+      "_note": "Niimbot B2 Pro — model id 6912 (0x1B00), protocol 5, advertised name e.g. 'B2 Pro-I304050285'. Validated on hardware 2026-08-14: identifies and prints end to end, and a 3-copy job printed three labels with the printer's counter stepping page 1 → 2 → 3. protocol 'v4' is the FRAMING (0x55 0x55 ... 0xAA 0xAA); task 'v4' is the command sequence, and it is measured — the 13-byte SetPageSize (0x13→0x14) and PageEnd (0xe3→0xe4), the two commands the D110 goes silent on when driven as v4, both acked here. density 3 / label_type 1 are the values that were ACCEPTED (0x31 and 0x33 acked), not values compared against alternatives.",
+      "label": "Niimbot B2 Pro",
+      "id": 6912,
+      "dpi": 300,
+      "protocol": "v4",
+      "task": "v4",
+      "density": 3,
+      "label_type": 1,
+      "speed": 1,
+      "name_prefixes": ["B2"]
+    },
     "b1": {
       "label": "Niimbot B1",
       "id": 4096,
@@ -89,6 +101,17 @@
       "w_mm": 50,
       "h_mm": 30,
       "w_px": 567,
+      "h_px": 354,
+      "margin": 10,
+      "dpi": 300
+    },
+    "T50x30_b2pro": {
+      "_note": "B2 Pro 50×30 @ 300 dpi. w_px 576 is the printhead width the printer REPORTS ITSELF via probe(0xDC, [0x03]) (reply 'de' bytes 4-5 = 02 40 = 576), and 576 printed edge to edge on a 50 mm label — two independent sources agreeing, which is exactly what the M2-H's 584 lacked. h_px 354 is measured: 354 rows filled 30 mm exactly, and a 354 px wide block left ~20 mm of white beside it (at 203 dpi it would have been 44 mm and overrun). A third 300 dpi 50×30 entry is deliberate: the registry already ships T50x30 (584, B1 Pro) and T50x30_m2h (567, M2-H) for the same reason — pair a size with its MODEL, not just its dpi.",
+      "label": "50 × 30 mm (B2 Pro)",
+      "code": "T50*30",
+      "w_mm": 50,
+      "h_mm": 30,
+      "w_px": 576,
       "h_px": 354,
       "margin": 10,
       "dpi": 300
