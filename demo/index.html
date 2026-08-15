@@ -586,13 +586,36 @@
     // console. That is unusable for a shelf of rolls and impossible on the phone
     // (Bluefy has no console) — which is the device where rolls actually get swapped.
 
-    // Printhead width per model, in pixels. NOT derivable from dpi: the M2-H and the
-    // B1 Pro are both 300 dpi with different heads. The B1 Pro's value is DISPUTED —
-    // docs/protocol-v4.md says 567, registry.json's T50x30 uses 584 (docs/NOTES.md
-    // § Two contradictions about printhead width, Vikunja 970). 584 is used here to
-    // stay consistent with the shipped registry; if the physical test says 567, this
-    // is the one place to change.
-    const PRINTHEAD_PX = { b1pro: 584, b1: 384, m2h: 567, d110: 96 };
+    // Printhead width per model, in pixels — the width the roll calculator clamps to.
+    // NOT derivable from dpi: the M2-H and the B1 Pro are both 300 dpi with different
+    // heads. EVERY model key in registry.json must have a row here: a missing key hands
+    // printhead_px: undefined to sizeFromMm(), which then never reports a clamp — a check
+    // that answers "fine" because it could not check.
+    //
+    // The rows do NOT all have the same standing, and saying which is which is the whole
+    // point of this comment:
+    //
+    //   REAL head widths (four):
+    //     b2pro 576, d11h 144 — the PRINTER REPORTS THESE ITSELF, probe(0xDC, [0x03])
+    //       bytes 4-5, and both are corroborated on paper (docs/NOTES.md § The printer
+    //       reports its own printhead width — dc[03], bytes 4-5).
+    //     n1 96, d110 96 — measured by print comparison: bands of increasing width stop
+    //       getting wider at the head (registry.json's T14x50 and T15x50 _note fields).
+    //
+    //   NOT verified head widths (three): b1pro 584, b1 384, m2h 567. These predate this
+    //     map having any stated meaning; nobody has probed a head on them.
+    //     m2h 567 is demonstrably NOT the head — that printer reports 576 via dc[03], and
+    //       567 is a deliberate ribbon margin (registry.json's T50x30_m2h _note: the M2-H
+    //       is thermal TRANSFER, the ribbon drifts, and ~1.4 mm of right margin absorbs it).
+    //     b1pro — whether the B1 Pro's head is 567 or 584 is still an open question
+    //       (Vikunja #970; docs/NOTES.md § Printhead width: one contradiction resolved,
+    //       one still open). It is answerable with NO labels at all: run
+    //       probe(0xDC, [0x03]) on a B1 Pro and read bytes 4-5.
+    //
+    // Leave those three values ALONE. Correcting them is a separate, hardware-backed
+    // decision, not a drive-by edit — and this map is not the place to record one, since
+    // registry.json has no printhead field yet.
+    const PRINTHEAD_PX = { b1pro: 584, b1: 384, m2h: 567, d110: 96, b2pro: 576, d11h: 144, n1: 96 };
 
     let lastTag = null;              // filled by "Read tag" — the barcode is never typed
 

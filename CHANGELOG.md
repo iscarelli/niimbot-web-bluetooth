@@ -91,6 +91,23 @@ All notable changes to this project are documented here. The format is based on
   runs on a `v*.*.*` tag push, so this is unverified end-to-end until the next release.
 
 ### Fixed
+- **T-016 — the demo's printhead clamp stops failing silently, and `package.json` names
+  every validated model**: the roll calculator's hardcoded `PRINTHEAD_PX` map held only
+  four of the registry's seven models, so picking a **B2 Pro, D11_H or N1** passed
+  `printhead_px: undefined` to `sizeFromMm()` and the clamp warning could never fire — the
+  worst kind of check, one that answers "fine" because it could not check. The map now
+  carries all seven (`b2pro: 576`, `d11h: 144`, `n1: 96` added). It also now **states which
+  numbers are real head widths and which are not**, because it always mixed the two without
+  saying so: `b2pro` 576 and `d11h` 144 are reported by the printer itself via
+  `probe(0xDC, [0x03])` and corroborated on paper, `n1` 96 and `d110` 96 are measured by
+  print comparison — while **`b1pro` 584, `b1` 384 and `m2h` 567 are not verified head
+  widths**. `m2h` 567 is demonstrably not the head (that printer reports 576; 567 is a
+  deliberate ribbon margin), and whether the B1 Pro's head is 567 or 584 is still open
+  (Vikunja #970, answerable with no labels by probing one). **Those three values are
+  unchanged on purpose** — correcting them is a hardware-backed decision, not a drive-by
+  edit, which is also why the map stays in the demo rather than moving into
+  `registry.json`, which has no printhead field. Separately, `package.json`'s `description`
+  had gone stale: it now reads **B1, B1 Pro, B2 Pro, M2-H, D11_H, D110 and N1**.
 - **T-019 — `T14x50` gets `offset_y_px: -2` (measured on an N1, not copied)**: the first
   print at the shipped 96 × 400 geometry came out **clipped at the bottom**, so every N1
   print lost content at the end of the label. `registry.json`'s `T14x50` now carries
