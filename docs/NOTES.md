@@ -961,7 +961,7 @@ time on the D110. The useful lesson is cheaper than a rule: **the N1's cap was f
 someone spent three labels asking, rather than reasoning that "3 copies obviously works".** It
 is three labels against a defect that reports 100 % and hands you one label.
 
-### `offset_y_px: -2` — and the sweep answered a second question nobody asked it
+### `offset_y_px: -1` — and the sweep answered a second question nobody asked it
 
 The first real print at the shipped 96 × 400 geometry came out clipped at the BOTTOM. Two
 causes fit that symptom and the paper cannot tell them apart: either the printable area is
@@ -975,13 +975,24 @@ middle. **If some label shows both bars, it is registration. If none does — th
 thinning away as the bottom bar arrives — the loss is only changing ends, and the printable
 area is genuinely short.**
 
-`-2` came out best, which settles it as registration. Note that this is the same value the
-D110 uses and it was **measured independently on an N1**, not copied — `T15x50`'s note and
-T-015 both explicitly forbade copying it, and that prohibition is what made the measurement
-happen instead of an assumption.
+`-2` came out best **of those six**, which settles it as registration — but not as the final
+value, and the difference cost a round. The grid held no odd numbers, so what the sweep
+returned was the best available *candidate*. Printing at `-2` through the demo still showed
+the bottom line only partly landing; comparing the odd neighbours put it at **`-1`**, which
+is what ships.
+
+**The lesson is about the grid, not the value.** A sweep answers only what it was asked, and
+a sweep of even numbers cannot return an odd one. Nothing in the reading rule was wrong —
+"the label with both bars wins" held throughout — it just had no `-1` to choose. When a sweep
+lands on a value adjacent to the edge of its own resolution, the resolution is the next thing
+to question.
+
+Worth recording that `-1` is **not** the D110's `-2`. `T15x50`'s note and T-015 both forbade
+copying that value, and that prohibition is what made someone measure instead of assume — the
+two entries are geometrically identical (96 × 400) and would have looked safe to unify.
 
 **The unasked question it also answered: the dpi, exactly.** A 400-row page fitting a 50 mm
-label with 2 rows of correction means the printable area IS 400 rows over 50 mm — **8.0 px/mm,
+label with 1 row of correction means the printable area IS 400 rows over 50 mm — **8.0 px/mm,
 dead on 203 dpi**. The ruler print had put it at ~7.8 px/mm from a "5 mm short of the edge"
 eyeball; this lands on the nominal value from a completely different measurement, with no
 estimation in it. Two independent routes, and the spec sheet's 300 dpi is out by 46 %.
