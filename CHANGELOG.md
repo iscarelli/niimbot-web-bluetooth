@@ -91,6 +91,21 @@ All notable changes to this project are documented here. The format is based on
   runs on a `v*.*.*` tag push, so this is unverified end-to-end until the next release.
 
 ### Fixed
+- **T-020 — the registry still asserted what `NOTES.md` had retracted (M2-H printhead)**:
+  two `_note` fields in `registry.json` (`models.m2h` and `sizes.T50x30_m2h`) still said the
+  M2-H head "reaches at least 584", a claim `docs/NOTES.md` withdrew on 2026-08-13 when
+  `probe(0xDC, [0x03])` came back reporting **576**. Both notes now say what is actually
+  known: the printer **reports** 576; solid black at 584 did print edge to edge and that
+  observation is real, but 584 − 576 = 8 px = 0.68 mm and a border hides that, so the
+  conclusion was too strong; and the comparison that would settle it — solid black at 584
+  versus at 576 — **has not been run**, so 576 is reported, not confirmed on paper. No value
+  changed: `w_px` stays **567**, and both notes still carry the reason it is 567 (a
+  deliberate ~1.4 mm right margin for **ribbon drift**, this being a thermal-transfer
+  printer). Also in `README.md`, the Troubleshooting row for slow labels and the demo's
+  button list said `copies` means "one upload" without qualification — true on most models,
+  false on the `pagesPerJob: 1` ones (D110, N1), where the driver sends N complete jobs and
+  the image crosses BLE N times; both now carry that caveat. Prose only — no code path and
+  no data was touched.
 - **T-021 — the demo's test print lost text off the sides of a narrow label**: `drawTest`
   sized its font from the label height alone (`h_px * 0.16`), which is fine on landscape
   labels and wrong on the first portrait one — on the N1's `T14x50` (**96 × 400 px**) that

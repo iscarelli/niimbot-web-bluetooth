@@ -441,7 +441,7 @@ The driver version actually loaded is shown as a badge next to the title: a tab 
 across a deploy keeps running the code it loaded, and that failure is silent — it once
 dropped a brand-new option and printed five identical labels.
 
-Buttons cover a single label, a **realistic label**, 3 identical copies (one upload),
+Buttons cover a single label, a **realistic label**, 3 identical copies (one upload, except on the D110 and N1),
 3- and 5-label batches (distinct), and dense stress tests. The realistic one is worth
 knowing about: it draws what people actually print — frame, heading, data lines, a
 barcode band — where each band is a run of identical rows that run-length compresses. The
@@ -568,7 +568,7 @@ no app:
 |---|---|
 | **macOS: print comes out blank but progress hits 100%** | macOS CoreBluetooth drops unacked write bursts. The driver already paces writes on macOS; if it still happens, raise the gap: `Niimbot.PACE_MS = 16` (or higher). |
 | **Error `"Connected printer is X … select Y"`** | The selected model doesn't match the connected printer. Pick the model the driver detected (`Niimbot.printer`), or use *Connect & identify* in the demo. |
-| **Dense / image-heavy labels are slow or stall between labels** | This is BLE throughput on worst-case content. Tune `Niimbot.BUNDLE_MAX` (frames per write) and `Niimbot.PACE_MS` (gap). Real labels (text/codes, mostly white) stream fine; for N identical labels use `copies` (one upload). |
+| **Dense / image-heavy labels are slow or stall between labels** | This is BLE throughput on worst-case content. Tune `Niimbot.BUNDLE_MAX` (frames per write) and `Niimbot.PACE_MS` (gap). Real labels (text/codes, mostly white) stream fine; for N identical labels use `copies` (one upload — except on `pagesPerJob: 1` models, D110 and N1, where the driver sends N complete jobs and the image crosses BLE N times). |
 | **Printer never starts / `PageEnd` never acks (B1, 203 dpi)** | An unacked burst dropped rows. Keep `Niimbot.PACE_MS` ≥ 10 for the B1. |
 | **`Niimbot.isSupported()` is false** | Firefox (no Web Bluetooth anywhere), Safari (see the iPhone row), an in-app WebView, or you're not on HTTPS/localhost. |
 | **iPhone: the connect button does nothing / not supported** | Safari has no Web Bluetooth. Open the page in **Bluefy** instead — validated on the B1 Pro (see *Requirements*). |

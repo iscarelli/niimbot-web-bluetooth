@@ -48,7 +48,7 @@
       "name_prefixes": ["D11"]
     },
     "m2h": {
-      "_note": "Niimbot M2-H — 300 dpi, model id 4608, protocol v4, advertised name e.g. 'M2_H-H107060027'. Validated on hardware: identifies and prints (5-label batch and single labels, 2026-08-13). Uses the b1 command sequence (per niimbluelib) with frame bundling. w_px 567 is NOT the printhead width — an earlier note said so and it is wrong: solid black at 584 printed edge to edge on this printer (2026-08-13), so the head reaches at least 584. 567 is a deliberate ~1.4 mm right margin, because THIS MODEL USES A RIBBON (thermal transfer, unlike the direct-thermal B1 Pro) and the ribbon tends to drift slightly; the margin absorbs that. Keep it unless you are testing the head itself.",
+      "_note": "Niimbot M2-H — 300 dpi, model id 4608, protocol v4, advertised name e.g. 'M2_H-H107060027'. Validated on hardware: identifies and prints (5-label batch and single labels, 2026-08-13). Uses the b1 command sequence (per niimbluelib) with frame bundling. w_px 567 is NOT the printhead width — but neither is 584: the printer REPORTS 576 via probe(0xDC, [0x03]) (reply de, bytes 4-5 = 02 40). Solid black at 584 did print edge to edge here (2026-08-13) and that observation is real, but the conclusion once drawn from it — that the head is at least 584 wide — was too strong: 584 − 576 = 8 px = 0.68 mm, well inside what a border can hide on a 50 mm label. The comparison that would settle it — solid black at 584 and at 576, are the bands identical? — has NOT been run, so 576 is what the printer reports, not something confirmed on paper. See docs/NOTES.md § 'The printer reports its own printhead width'. 567 is a deliberate ~1.4 mm right margin, because THIS MODEL USES A RIBBON (thermal transfer, unlike the direct-thermal B1 Pro) and the ribbon tends to drift slightly; the margin absorbs that. Keep it unless you are testing the head itself.",
       "label": "Niimbot M2-H",
       "id": 4608,
       "dpi": 300,
@@ -107,7 +107,7 @@
       "dpi": 203
     },
     "T50x30_m2h": {
-      "_note": "M2-H 50×30 @ 300 dpi. w_px 567 is a deliberate right margin for RIBBON DRIFT, not the printhead width — the head reaches at least 584 (solid black at 584 printed edge to edge, 2026-08-13). h_px = 30 mm × 11.81. See the m2h model note.",
+      "_note": "M2-H 50×30 @ 300 dpi. w_px 567 is a deliberate right margin for RIBBON DRIFT, not the printhead width — the printer reports its head as 576 via probe(0xDC, [0x03]). Solid black at 584 printed edge to edge here (2026-08-13), but 584 − 576 = 8 px = 0.68 mm and a border hides that, so the earlier claim that the head is at least 584 wide is withdrawn; the print at 576 vs 584 that would settle it has not been run. h_px = 30 mm × 11.81. See the m2h model note.",
       "label": "50 × 30 mm (M2-H)",
       "code": "T50*30",
       "w_mm": 50,
