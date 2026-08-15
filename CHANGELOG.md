@@ -4,7 +4,7 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/), and this project adheres to
 [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [2.4.0] - 2026-08-15
 ### Added
 - **T-017 — bring-up harness for the browser console (`test/bringup.mjs`)**: the tests that
   actually brought up the B2 Pro and the N1 on 2026-08-14, as one call each, loaded from the
@@ -35,11 +35,9 @@ All notable changes to this project are documented here. The format is based on
   80 put it at **≤ 96 and > 80**. The intervals meet at 96, which is also the
   stride-aligned multiple of 8 — the same reasoning that fixed the D110's head. `h_px` 400
   is arithmetic from the measured 203 dpi (50 mm × 7.992).
-  **Deliberately no `offset_y_px`:** `T14x50` comes out geometrically identical to the
-  D110's `T15x50` (96 × 400), but that entry's `offset_y_px: -2` was measured on a D110 by
-  a six-label sweep and **paper registration has never been measured on an N1** — the two
-  stay separate entries, and the `_note` says so. Data only; no code path changed, and a
-  print at this geometry is not yet confirmed on paper.
+  `T14x50` comes out geometrically identical to the D110's `T15x50` (96 × 400), but the two
+  stay separate entries and neither offset is copied from the other — see the T-019 + T-022
+  entry below for the value this size ships with. Data only; no code path changed.
 - **T-014 — Niimbot N1 (model id 3586)**: the seventh printer validated on real hardware
   (2026-08-14, capture in `docs/NOTES.md` § *N1*). `MODEL_IDS` gets a `3586` entry
   (`task: "b1"`, `dpi: 203`, `paced: true`, `bundle: false`) and `registry.json` a `n1`
@@ -137,21 +135,24 @@ All notable changes to this project are documented here. The format is based on
   edit, which is also why the map stays in the demo rather than moving into
   `registry.json`, which has no printhead field. Separately, `package.json`'s `description`
   had gone stale: it now reads **B1, B1 Pro, B2 Pro, M2-H, D11_H, D110 and N1**.
-- **T-019 — `T14x50` gets `offset_y_px: -2` (measured on an N1, not copied)**: the first
+- **T-019 + T-022 — `T14x50` gets `offset_y_px: -1` (read off an N1, not copied)**: the first
   print at the shipped 96 × 400 geometry came out **clipped at the bottom**, so every N1
   print lost content at the end of the label. `registry.json`'s `T14x50` now carries
-  `offset_y_px: -2`, **measured on an N1** (2026-08-15) by a six-candidate sweep
-  (`0, -2, -4, -6, -8, -10`), each candidate printed on its own label with its value drawn
-  on it and compared against the physical edge. It equals the D110's `T15x50` value, and
-  that is a **coincidence of two independent measurements, not a shared source** — the
-  `_note`'s standing prohibition on copying between the two entries is what made someone
-  measure instead of assume, so it stays. The sweep also settled the dpi from a second
-  route: a 400-row page fitting a 50 mm label with 2 rows of correction means the printable
-  area **is** 400 rows over 50 mm — 8.0 px/mm, exactly 203 dpi — so `h_px: 400` is
-  confirmed and the clipping was registration, not an over-long page. Known cost, as on
-  `T15x50`: a negative offset crops the **top** 2 rows (~0.25 mm) of the source, so content
-  drawn flush against the top edge is still clipped. Data only; no code path changed, and a
-  confirming print at `-2` through the demo's normal path is **not yet done on paper**.
+  **`offset_y_px: -1`**, and it took two steps on an N1 (2026-08-15). A six-candidate sweep
+  `(0, -2, -4, -6, -8, -10)` — each candidate printed on its own label with its value drawn
+  on it and compared against the physical edge — picked -2 as the best of those six, and
+  that is what shipped first. The sweep's grid held no odd values, so its answer was the
+  best available *candidate* rather than the best value; further prints compared the odd
+  neighbours and **-1** came out best. The offset no longer equals the D110's `T15x50`, and the
+  `_note`'s standing prohibition on copying between the two entries — what made someone
+  measure instead of assume — matters more now that two geometrically identical entries
+  carry different values. The sweep also settled the dpi from a second route: a 400-row page
+  fitting a 50 mm label with a correction of two or three rows means the printable area
+  **is** 400 rows over 50 mm — 8.0 px/mm, exactly 203 dpi — so `h_px: 400` is confirmed and
+  the clipping was registration, not an over-long page. Known cost, the same kind as on
+  `T15x50`: a negative offset crops the **top** row (~0.12 mm) of the source, so content
+  drawn flush against the top edge is still clipped. Data only; no code path changed — the
+  value came from reading real labels, and `-1` is the one that came out best.
 - **T-018 — N1 `pagesPerJob: 1` (measured) + cover it in the harness**: a multi-copy or
   multi-page job on an **N1** printed **one** label and then threw. `MODEL_IDS[3586]`
   now carries `pagesPerJob: 1`, so the driver splits N copies/pages into N separate jobs
