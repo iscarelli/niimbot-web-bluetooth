@@ -40,17 +40,51 @@ barcodes are "really" the same consumable.
 `serialNumber` identifies the individual roll in both schemes: it differs on every roll
 above and carries what look like batch/date codes.
 
-Three limits, all worth respecting:
+### ✅ The confirmation happened — 2026-08-28, and on the 8-digit scheme
 
-- The GTIN reading is inference **from the format of the code**, not an observation. The
-  direct confirmation — two physically different rolls of the SAME SKU showing the same
-  `barCode` with different `serialNumber` — has not happened. An attempt on 2026-08-13
-  produced two identical records (same `serialNumber`, same `usedPaper`): the same roll
-  read twice, which confirms nothing.
-- Whether two 8-digit rolls of the same dimensions are the same product is
-  unestablished and is **not assumed anywhere**: their serials start `PC0G` and `PZ1G`,
-  different prefixes, and the rule above (different code ⇒ different label) means
-  nothing depends on the answer.
+Six more rolls, read on a B1 Pro from a different machine, 15 days later:
+
+| `barCode` | `serialNumber` | label |
+|---|---|---|
+| `10262260` | `PZ1I127313001006` | 50 × 30 mm, white |
+| `02272333` | `PJ0H925674000155` | 25×38+40 cable flag, **yellow** |
+| `02272334` | `PJ0H429776000139` | 25×38+40 cable flag, **green** |
+| `6977031215465` | `PJ0H925732000311` | 25×38+40 cable flag, **blue** |
+| `12222122` | `PC0H826395001478` | 25×38+40 cable flag, **white** |
+| `6977031215458` | `PJ0H925729000578` | 25×38+40 cable flag, **red** |
+
+🔥 **Row 1 closes the question this section had left open.** `10262260` also appears in
+the 2026-08-13 table above, as a 50 × 30 white roll — with serial `PZ1G328306001390`.
+The 2026-08-28 reading is `10262260` with serial **`PZ1I127313001006`**. Same barcode,
+**different serial**, same product: two physically different rolls of one SKU. That is
+exactly the direct confirmation the earlier text said had not happened, and the failed
+2026-08-13 attempt (the same roll read twice) was looking for.
+
+**And it lands on the 8-digit scheme, which was the undecoded one** — so "8 digits, meaning
+unknown" no longer implies "possibly per-roll". At least this code generalises to the
+product.
+
+Two more corroborations in the same batch, both consistent with the GTIN reading:
+
+- the blue `6977031215465` matches the 2026-08-13 blue exactly, and the new red
+  `6977031215458` is the same maker prefix `6977031` with the **adjacent** product number
+  (`21545` / `21546`) — the same variant-numbering already documented for maker `6975746`
+  (`63232` white / `63233` yellow / `63234` red);
+- the 8-digit yellow (`02272333`) and green (`02272334`) are likewise **consecutive**, so
+  the 8-digit scheme numbers colour variants the same way. Read alone, without this
+  section, consecutive numbers look like batch counters — they are not.
+
+**What still is NOT established:** that *every* 8-digit code is per-product. One SKU
+confirmed is one SKU confirmed. The operating rule below is unchanged and still does not
+depend on the answer.
+
+Two limits remain:
+
+- Whether two 8-digit rolls of *different* dimensions relate at all is unestablished, and
+  is **not assumed anywhere**. Note the two 50 × 30 rolls of the 2026-08-13 table carry
+  *different* 8-digit codes (`11262111`, `10262260`) with serial prefixes `PC0G` and
+  `PZ1G` — under the reading above they are two different white-ish 50 × 30 **products**,
+  not the same product twice.
 - **Scope: one printer (a B1 Pro) and the six rolls above, on 2026-08-13.** Nothing here
   has been checked against another printer model or another label range.
 
