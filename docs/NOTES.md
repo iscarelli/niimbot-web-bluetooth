@@ -1110,3 +1110,49 @@ readable answer gets turned into a measurement nobody trusts. Numbering or posit
 candidates inside the image — the same move as the row-numbered ruler that settled the N1's
 dpi — turns "is it wider?" into "which marks are there?", and the second question has one
 answer.
+
+### Open: 576 dots, or a 576-wide window inside a 584-dot head? (2026-09-07)
+
+The maintainer raised this straight after the staircase print, and he is right that **the
+test above does not discriminate**. Blank columns at 576-583 are explained equally well by:
+
+- **(a)** the head has 576 dots, or
+- **(b)** the head has 584 dots and a 576-wide printable window sits at offset 0, leaving
+  the last 8 dots addressable but outside the window.
+
+Nothing printed here separates them. What the staircase establishes is the **printable
+width**, which is 576 either way, and that is the only one of the two the driver can act on:
+there is no known command to move the window, so columns past 575 do not come out. T-023 is
+unaffected by which explanation is true.
+
+**Where the intuition comes from is worth writing down, because two real things in this file
+point that way and neither says what it seems to.**
+
+- The M2-H sends **567** while its head reports **576**, and that gap is deliberate: the
+  M2-H is thermal transfer, the ribbon drifts, and 567 is a ~1.4 mm right margin that
+  absorbs it. So a head/used-width gap does exist on a Niimbot here — but it goes the other
+  way. A margin sends **fewer** pixels than the head. 584 sends **more**. The M2-H reasoning
+  cannot justify 584 in either direction of the argument.
+- This file *did* once say the M2-H head "reaches at least 584", from solid black printing
+  edge to edge at that width. T-020 withdrew it: 8 px is 0.68 mm and hides inside "it
+  reached the edge". A retracted claim is exactly the kind of thing that stays in memory
+  after the retraction does not.
+
+**What would settle it, cheaply and in this order.**
+
+1. **Free, no label:** dump the whole `de` payload on a B1 Pro and read `HA`
+   ("printhead alignment", byte 7 of the payload). Against the M2-H and the D11_H captures
+   it is `02` on both, a 576 px head and a 144 px one, so it does not scale with the head; a
+   third sample either keeps that pattern or breaks it.
+
+       const r = await Niimbot.probe(0xdc, [0x03]);
+       console.log([...r.data].map(b => b.toString(16).padStart(2, "0")).join(" "));
+
+2. **Two labels:** does `W` move the window? Print a 4 px bar at columns 0-3 with `w_px`
+   584, then the same bar with `w_px` 576, and measure where each lands from the label's
+   left edge. Same place means the origin is fixed and `W` only clips. A shift means `W`
+   repositions the window, which would make (b) the live hypothesis and open the question of
+   what else can move it.
+
+Until one of those is run, the physical dot count is **unknown** and this file should not
+say otherwise.
