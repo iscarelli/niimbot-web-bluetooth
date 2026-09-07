@@ -1256,15 +1256,39 @@ no lever here: no command is known that writes `HA`, and sweeping top-level opco
 for one is the thing this project refuses to do, because this protocol has commands that
 print, feed, write RFID and update firmware.
 
+**A second reported width exists, and it was asked for.** The community wiki's `PrinterInfo`
+table lists two sub-codes this project had never read: `0x40[0x04]` **PrinterHeadWidth**
+(response `0x44`, 2 bytes) and `0x40[0x05]` **PrintingAccuracy** (`0x45`, 1 byte), both
+annotated there as "doesn't seem to be used in firmware". A second reported head width would
+have settled the question outright: 584 from one source and 576 from the other is exactly
+what a physical head and a printable window would look like.
+
+Both were probed on a **B1 Pro** on 2026-09-07. Both answer **cmd `0x00`, data `01`**, this
+protocol's "not supported". The M2-H sweep implies the same for that model, since `40[04]`
+never appears among the sub-codes that answered. So the field is documented and unimplemented
+on both printers here, which corroborates the wiki's own note.
+
 That closes the question as far as it can be closed from the driver. The physical dot count
 stays **unknown**, and it stays unknown for a stated reason rather than for lack of trying:
-every addressable path lands on the same 576 columns at the same origin.
+every addressable path lands on the same 576 columns at the same origin, and the one command
+that would have reported a different number refuses to answer.
+
+🔥 **The correction that had to be made here is about a claim, not a number.** The paragraph
+above originally ended at "for lack of trying" without the `40[04]` probe behind it, and the
+basis for it was that this repo's own protocol notes document no such command. That is
+coverage of *this documentation*, not of the printer. The sweep those notes rest on was run
+on **one model**, the M2-H, and the sub-code space of the B1 Pro had never been touched. The
+maintainer asked whether the claim had been researched or assumed. It had been assumed, and
+the answer only became true after ten minutes of reading someone else's protocol page and one
+free probe. **Before writing that something does not exist, check whose map you are reading.**
 
 **What would still settle it, and none of it is available here.**
 
 - A command that writes `HA`, if one exists. Nobody here will find it by sweeping.
 - The official app doing something the protocol notes have not captured, seen in a sniff.
 - Teardown photos or a datasheet for the head module itself.
+- A model where `40[04]` *is* implemented, which would let the two reported widths be
+  compared on the same printer.
 
 (`HA` was checked and is `02` on all four printers dumped here, across heads of 384, 576,
 576 and 144, so it carries no per-model information either way.)

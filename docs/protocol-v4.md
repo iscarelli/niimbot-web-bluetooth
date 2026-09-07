@@ -49,7 +49,7 @@ Responses arrive via NOTIFY in the same frame (`0x55 0x55 cmd len ... crc 0xAA 0
 |---|---|---|---|
 | `0xC1` | Connect | `0xC2` | sent raw with a `03` prefix: `03 55 55 C1 01 01 C1 AA AA`. Resp data = `[connectResult]` |
 | `0xA5` | PrinterStatusData | `0xB5` | data = `[1]`. **`b1` handshake** (see below) |
-| `0x40` | PrinterInfo | `0x48`,`0x4B`,`0x4D`,`0x4A`,`0x47`,`0x43`,`0x4C`,`0x49` | data = `[sub]`. **`b1` handshake** — one query per sub-code |
+| `0x40` | PrinterInfo | `0x48`,`0x4B`,`0x4D`,`0x4A`,`0x47`,`0x43`,`0x4C`,`0x49` | data = `[sub]`. **`b1` handshake** — one query per sub-code. The community wiki also documents `[0x04]` PrinterHeadWidth and `[0x05]` PrintingAccuracy; **both answer `0x00`/`01` (not supported) on the M2-H and the B1 Pro** (2026-09-07), matching that wiki's own "doesn't seem to be used in firmware". The printhead width that *is* readable comes from `0xDC[0x03]` |
 | `0xDC` | Heartbeat | `0xD9` | data = `[type]`; `04` = "advanced 2". **`b1` handshake**; also read by `getStatus()` — see [Consumable status](#consumable-status) |
 | `0x1A` | RfidInfo | `0x1B` | data = `[01]`. Consumable/tag info. **Optional** — many models/consumables never answer. See [Consumable status](#consumable-status) |
 | `0x21` | SetDensity | `0x31` | data = `[density]` (B1: 1–5; 3 = default) |
