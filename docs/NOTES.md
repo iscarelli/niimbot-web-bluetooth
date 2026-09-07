@@ -1062,15 +1062,15 @@ solid black printing edge to edge at 584, and `dc[03]` answered 576, with the no
 is inside what "it reached the edge" can hide. The same argument applies here, and now the
 B1 Pro has answered for itself.
 
-**Where the number came from.** 576 was not read off this printer first: it was *predicted*.
-The community wiki's model table is generated from NIIMBOT's cloud catalog by
-`fill_info_from_cloud.py`, which converts a millimetre width with `{"203": 8, "300": 11.81}`
-px/mm. The 203 row is exact; 11.81 is 300 dpi pushed through 25.4. These printers are
-**12 px/mm** (304.8 dpi, rounded to "300" in the catalog exactly as 8 px/mm = 203.2 dpi is
-rounded to "203"), so every 300 dpi width in that table is short. 48 mm × 12 = 576. The
-constant was derived from the B2 Pro, M2-H and D11_H, all of which report values matching
-12 px/mm; the B1 Pro was then written down as 576 **before** being measured, as the test
-that could refute it, and it answered 576. Reported upstream:
+**Where the number came from — and the reasoning was wrong, see the correction below.**
+576 was *predicted* rather than read off this printer first. The community wiki's model
+table is generated from NIIMBOT's cloud catalog by `fill_info_from_cloud.py`, which converts
+a millimetre width with `{"203": 8, "300": 11.81}` px/mm, and 48 mm x 12 = 576 reproduced
+the reported head on the B2 Pro, M2-H and D11_H. So the guess was that the constant should
+be 12. The prediction held on the B1 Pro, and **the reasoning behind it was still wrong**:
+11.81 is correct and the head width is not a millimetre figure times anything. Measured with
+a caliper on 2026-09-07 and refuted upstream on a B21 Pro the same day. See
+*Neither constant derives a printhead* below, and
 https://github.com/MultiMote/niimbot-wiki/issues/3
 
 **What is NOT established.** That 584 is wrong on paper. The printer reporting 576 and the
@@ -1120,14 +1120,17 @@ that moved this number would have been the wrong fix.
 
 Both dpi classes are now sourced from hardware rather than from a catalog:
 
-| px/mm | model | reported | on paper |
+| class | model | reported head | on paper |
 |---|---|---|---|
-| 8 ("203") | B1 | 384 | not run |
-| 8 | D110, N1 | refused | 96 |
-| 12 ("300") | B1 Pro | 576 | 576 exactly |
-| 12 | B2 Pro | 576 | edge to edge at 576 |
-| 12 | M2-H | 576 | not run |
-| 12 | D11_H | 144 | 144 |
+| 203 dpi | B1 | 384 | not run |
+| 203 dpi | D110, N1 | refused | 96 |
+| 300 dpi | B1 Pro | 576 | 576 exactly |
+| 300 dpi | B2 Pro | 576 | edge to edge at 576 |
+| 300 dpi | M2-H | 576 | not run |
+| 300 dpi | D11_H | 144 | 144 |
+
+(An earlier version of this table headed the first column "px/mm" and put 12 in it. The
+scale is 11.81; see *Neither constant derives a printhead*.)
 
 **And `T50x30_b1` needs nothing.** Its `w_px` is 384, which is the head to the pixel, so the
 B1 has never lost a column. The B1 Pro is the only shipped size that overruns its head, which
@@ -1189,9 +1192,11 @@ px/mm constants at every head width measured here:
 | M2-H | `03` | 576 | 48 | **12.0** |
 | D11_H | `03` | 144 | 12 | **12.0** |
 
-Exact in every row, no rounding. `AC 02` goes with 8 px/mm (203.2 dpi, sold as "203") and
-`AC 03` with 12 px/mm (304.8 dpi, sold as "300"). Whether `AC` is an index or something like
-dpi/100 cannot be told from two values.
+`AC 02` is the 203 dpi class and `AC 03` the 300 dpi class. Whether `AC` is an index or
+something like dpi/100 cannot be told from two values. **The `head / mm` column is
+arithmetic on the catalog's millimetre figure, not a measured scale** — the scale is
+11.81 px/mm, measured with a caliper, and that column landing on 12.0 is a property of which
+printers happen to sit on this shelf. See *Neither constant derives a printhead*.
 
 **What this is good for.** Geometry no longer needs a catalog at all on a printer that
 answers `0xDC[0x03]`: the width comes from bytes 4-5 and the scale from `AC`, both from the
@@ -1252,3 +1257,50 @@ point that way and neither says what it seems to.**
 
 Until one of those is run, the physical dot count is **unknown** and this file should not
 say otherwise.
+
+## Neither constant derives a printhead — 11.81 measured, and the whole approach was wrong (2026-09-07)
+
+Two things collapsed within an hour of each other, and the second one is the useful one.
+
+**First, upstream refuted the constant.** MultiMote tested on a **B21 Pro**: 591 px (the
+current wiki value) clipped, 600 px (what a factor of 12 would produce) clipped worse, and
+**576 px — the value from `0xde` — fit**. That printer's catalog `widthSetEnd` is **50 mm**
+while the B1 Pro's is **48 mm**, and both report a **576** px head. Same head, different
+millimetre figure. No function of `widthSetEnd` returns 576 for both, so no constant fixes
+that table: not 11.81, not 12, not anything.
+
+**Then the ruler print settled the scale, against me.** On a B1 Pro, measured with a
+**caliper**:
+
+| span | px | measured | 11.81 px/mm predicts | 12 px/mm predicts |
+|---|---|---|---|---|
+| tick 0 to tick 45 | 540 | **45.7 mm** | **45.72** | 45.0 |
+| the two full-height lines, inner edge to inner edge | 572 | **48.4 mm** | **48.43** | 47.67 |
+
+Both land on 11.81 within 0.03 mm, and both miss 12 by more than 0.7 mm — fourteen times a
+caliper's resolution. **These printers are really 300 dpi.** The catalog's 11.81 was right
+the whole time.
+
+**So why is the head 576 and not 567?** Because a printhead is a dot count, not a converted
+millimetre figure. 576 dots at 300 dpi is 48.77 mm, and the catalog's nominal 48 mm converts
+to 566.9. The dot counts seen here are 96, 144, 384 and 576 — every one a multiple of 8,
+which is what a row buffer packed one bit per pixel would produce. `widthSetEnd` is a
+nominal figure that sometimes coincides with the head (the D110's 12 mm) and sometimes does
+not (the B21 Pro's 50 mm), with nothing in the data marking which case you are in.
+
+🔥 **What actually went wrong here, and it is not the arithmetic.** Every printer on this
+shelf has a `widthSetEnd` equal to its printhead width in millimetres. Four models agreeing
+looked like a law; it was a property of the sample. The B1 Pro "prediction" felt like a
+falsification test and was not one: it could only ever confirm, because it came from the
+same population the rule was fitted to. A test that cannot fail is not a test, and I called
+one a prediction in public before a printer I do not own took one print to break it.
+
+**What survives.** The `AC` field is the dpi class, predicted before it was read and
+confirmed on a printer of the other class. The measured head widths stand. And the
+recommendation that came out of the wreck is the one this project already applies to
+`w_px`: **ask the printer, do not derive** — `0xde` bytes 4-5 for the head, `AC` for the
+scale, and leave the cell empty rather than plausible when neither is available.
+
+**T-023 is untouched by all of this.** It rests on the staircase print, where columns 576-583
+did not come out on a B1 Pro. That is a direct observation about which columns print, and it
+does not depend on px/mm or on any catalog field.
