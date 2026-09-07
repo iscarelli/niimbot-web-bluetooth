@@ -1304,3 +1304,35 @@ scale, and leave the cell empty rather than plausible when neither is available.
 **T-023 is untouched by all of this.** It rests on the staircase print, where columns 576-583
 did not come out on a B1 Pro. That is a direct observation about which columns print, and it
 does not depend on px/mm or on any catalog field.
+
+### The margins close the model, and refute 12 px/mm a third time (2026-09-07)
+
+Same label, same caliper, measuring what the print does **not** cover rather than what it does:
+
+    label width          50.0 mm
+    margin, column 0 side   0.7 mm
+    margin, column 575 side 0.5 mm
+
+The two margins sum to **1.2 mm**. A 576 px band at 11.811 px/mm is 48.768 mm, so on a 50 mm
+label the prediction is **1.232 mm**. It agrees to 0.03 mm.
+
+This is worth more than another decimal place on the same number, because it measures the
+**complement**. The band and its margins fail in opposite directions, so an error that
+flattered one would spoil the other. At 12 px/mm the band would be 48.00 mm and the margins
+would have to sum to **2.0 mm**; they measure 1.2. That is 0.8 mm out, on a third
+independent quantity, with an instrument that resolves 0.05.
+
+**The band is centred, within what a single label can show.** The two margins differ by
+0.2 mm, which is 2.4 px, so the band's centre sits about 0.1 mm off the label's. That is
+inside the play of a roll sitting in its guides, and one label cannot separate a systematic
+offset from how this particular label was loaded. Calling it centred is the honest reading;
+claiming a 2.4 px bias would need the same measurement across several labels, checking
+whether the same side stays wider.
+
+**No horizontal offset correction is warranted**, and the registry has nowhere to put one
+anyway: `offset_y_px` is the feed axis and there is no X equivalent.
+
+🔥 **And it settles what the 8 lost columns are lost to.** At `w_px` 584 the band would be
+49.45 mm, leaving 0.55 mm of margin: still comfortably on a 50 mm label. So columns 576-583
+are not falling off the paper. They are past the printhead, which is what the staircase print
+showed directly and what T-023 fixes. Paper was never the constraint.
