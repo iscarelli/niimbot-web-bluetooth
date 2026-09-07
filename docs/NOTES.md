@@ -1133,6 +1133,37 @@ Both dpi classes are now sourced from hardware rather than from a catalog:
 B1 has never lost a column. The B1 Pro is the only shipped size that overruns its head, which
 is what T-023 fixes.
 
+### Third `de` sample: the B1 Pro, and `HA` is constant (2026-09-07)
+
+    M2-H     de:  01 01  01 36  [02 40 = 576]  03 02 01 00
+    D11_H    de:  04 01  04 1c  [00 90 = 144]  03 02 01 00
+    B1 Pro   de:  02 01  02 0c  [02 40 = 576]  03 02 01 00
+
+Named against the layout MultiMote published on 2026-09-07: hardware version, software
+version, printhead width, then `AC` print accuracy, `HA` printhead alignment, `SR` supports
+RFID, `SW` supports write RFID.
+
+**`HA` is `02` on all three**, across head widths of 576, 144 and 576. So it does not encode
+a difference between a physical head and a printable window: such a value would have to vary
+per model, and 584 - 576 = 8 is not 2 on any reading. That does not *refute* the window
+hypothesis — a window sitting 2 dots in would still leave source columns 576-583 outside a
+576-wide window, which is what the staircase saw — but it removes `HA` as the evidence for
+it. A field that is constant across every sample you have tells you almost nothing.
+
+**`AC` is `03` on all three, and all three are 300 dpi.** That is a hypothesis with a free
+test: if `AC` encodes print accuracy in the sense the catalog means, then a **203 dpi**
+printer should not answer `03`. The B1 (model id 4096, head 384) has never been dumped. If
+it answers something other than `03`, `AC` is the dpi and a driver can stop trusting a
+catalog for that too; if it still answers `03`, `AC` means something else and this guess
+dies. Either way it costs no label:
+
+    const r = await Niimbot.probe(0xdc, [0x03]);
+    console.log([...r.data].map(b => b.toString(16).padStart(2, "0")).join(" "));
+
+**Not a coincidence worth chasing yet:** the high byte of the hardware version and of the
+software version agree within each model (`01`/`01` on the M2-H, `02`/`02` on the B1 Pro,
+`04`/`04` on the D11_H). Three samples, and nothing depends on it.
+
 ### Open: 576 dots, or a 576-wide window inside a 584-dot head? (2026-09-07)
 
 The maintainer raised this straight after the staircase print, and he is right that **the
