@@ -1239,21 +1239,35 @@ point that way and neither says what it seems to.**
   reached the edge". A retracted claim is exactly the kind of thing that stays in memory
   after the retraction does not.
 
-**What would settle it, cheaply and in this order.**
+**The one mechanism we control was already tested, and it is excluded.** To detect dots
+beyond 576 you would have to *move* the window, and the only parameter a caller controls is
+`W`. The staircase print already contains that experiment. It declared `W = 584` and put
+steps at columns 568, 572, 576 and 580; two came out and two did not. Work out what each
+positioning rule predicts for a 576-wide window inside `W = 584`:
 
-1. **Free, no label:** dump the whole `de` payload on a B1 Pro and read `HA`
-   ("printhead alignment", byte 7 of the payload). Against the M2-H and the D11_H captures
-   it is `02` on both, a 576 px head and a 144 px one, so it does not scale with the head; a
-   third sample either keeps that pattern or breaks it.
+| rule | window offset | steps that would print | matches paper? |
+|---|---|---|---|
+| origin fixed at dot 0 | 0 | 568, 572 | **yes** |
+| window centred on `W` | -4 | 568, 572, 576 | no |
+| window right-aligned in `W` | -8 | 568, 572, 576, 580 | no |
 
-       const r = await Niimbot.probe(0xdc, [0x03]);
-       console.log([...r.data].map(b => b.toString(16).padStart(2, "0")).join(" "));
+Only the fixed origin survives. **`W` does not move anything; it only clips.** So there is
+no lever here: no command is known that writes `HA`, and sweeping top-level opcodes to look
+for one is the thing this project refuses to do, because this protocol has commands that
+print, feed, write RFID and update firmware.
 
-2. **Two labels:** does `W` move the window? Print a 4 px bar at columns 0-3 with `w_px`
-   584, then the same bar with `w_px` 576, and measure where each lands from the label's
-   left edge. Same place means the origin is fixed and `W` only clips. A shift means `W`
-   repositions the window, which would make (b) the live hypothesis and open the question of
-   what else can move it.
+That closes the question as far as it can be closed from the driver. The physical dot count
+stays **unknown**, and it stays unknown for a stated reason rather than for lack of trying:
+every addressable path lands on the same 576 columns at the same origin.
+
+**What would still settle it, and none of it is available here.**
+
+- A command that writes `HA`, if one exists. Nobody here will find it by sweeping.
+- The official app doing something the protocol notes have not captured, seen in a sniff.
+- Teardown photos or a datasheet for the head module itself.
+
+(`HA` was checked and is `02` on all four printers dumped here, across heads of 384, 576,
+576 and 144, so it carries no per-model information either way.)
 
 Until one of those is run, the physical dot count is **unknown** and this file should not
 say otherwise.
