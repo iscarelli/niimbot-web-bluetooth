@@ -1065,3 +1065,33 @@ width — has not been run. That is the same test that settled the D11_H (177 ve
 out identical), and it is the maintainer's step. Until then 576 is *reported*, not
 *confirmed on paper*, which is the exact wording T-020 chose for the M2-H and for the same
 reason.
+
+### Confirmed on paper the same day (2026-09-07)
+
+The discriminating print was run on the B1 Pro, and it was not the solid-black comparison
+this section originally called for. Two solid blacks differ by 0.68 mm, which is the width
+T-020 already recorded as hiding inside "it reached the edge"; the test asks you to *measure*
+rather than to *read*.
+
+What was printed instead, declaring `w_px` 584 so the columns past the head are actually
+sent: a solid block at columns 0-47 (a control that the label printed at all), a full-height
+reference bar at 540-543 (a column the head certainly reaches), and **four 4 px steps at
+columns 568, 572, 576 and 580, each in its own vertical quarter** so they are told apart by
+position on the feed axis rather than by measuring across it. Two steps fall inside 576 and
+two fall past it, so a single flawed step cannot be mistaken for the result.
+
+**On paper: the control block, the reference bar, and only the top two steps.** The steps at
+576 and 580 are absent.
+
+So columns 0-575 print and column 576 does not. The printable width is **exactly 576** — a
+value, not a bound — and it agrees with `probe(0xdc,[0x03])` to the pixel. `T50x30`'s 584
+therefore loses columns 576-583, which is 8 px and 0.68 mm, silently, on every 50 x 30 label
+ever printed on a B1 Pro here. T-023 stands.
+
+**Why this design generalises.** The D11_H was settled by comparing two solid blacks because
+there the difference was 33 px (2.8 mm) and visible across the room. That test does not
+transfer to an 8 px difference, and reaching for it anyway is how a question that has a
+readable answer gets turned into a measurement nobody trusts. Numbering or positioning the
+candidates inside the image — the same move as the row-numbered ruler that settled the N1's
+dpi — turns "is it wider?" into "which marks are there?", and the second question has one
+answer.

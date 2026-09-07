@@ -19,9 +19,11 @@ Files:   registry.json, README.md, CHANGELOG.md
 Do:      In `registry.json`, set `sizes.T50x30.w_px` to 576 (leave `h_px` 354 and
          `offset_y_px` untouched). Add a `_note` to that entry saying: the value is the
          printhead width the printer reports via `probe(0xdc,[0x03])` on a B1 Pro
-         (model id 4097, read 2026-09-07); the previous 584 exceeded it by 8 px = 0.68 mm,
-         which prints nothing and raises no error; and that solid black at 584 versus at
-         576 has NOT been compared on paper, so 576 is reported, not confirmed on paper.
+         (model id 4097, read 2026-09-07) AND confirmed on paper the same day: printing
+         four 4 px steps at columns 568, 572, 576 and 580 with `w_px` 584, the steps at 568
+         and 572 came out and those at 576 and 580 did not, so columns 0-575 print and 576
+         does not. The previous 584 exceeded the head by 8 px = 0.68 mm, which prints
+         nothing and raises no error. See docs/NOTES.md, the two sections dated 2026-09-07.
          Do not touch `T50x30_m2h` (567, a deliberate ribbon-drift margin) or
          `T50x30_b2pro` (576).
          In `README.md`, update the two places that state 584 for the B1 Pro: the
@@ -36,6 +38,6 @@ Verify:  `node --check src/niimbot.js` (no source change is expected, so this on
          nothing was broken), and
          `python -c "import json;d=json.load(open('registry.json',encoding='utf-8'));s=d['sizes'];assert s['T50x30']['w_px']==576;assert s['T50x30_m2h']['w_px']==567;assert s['T50x30_b2pro']['w_px']==576;print('ok')"`
          Then `grep -n 584 README.md registry.json` must return nothing.
-         **Hardware confirmation is NOT part of this task and must not be claimed:** the
-         discriminating test is solid black at 584 versus at 576 on a B1 Pro, compared for
-         printed width, and it belongs to the maintainer.
+         Hardware confirmation for this one is already DONE (docs/NOTES.md, 2026-09-07),
+         so the changelog entry may state that the 576 is confirmed on paper. It must still
+         not claim that any print path was exercised by this task: nothing here prints.
