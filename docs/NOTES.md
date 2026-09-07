@@ -1164,6 +1164,49 @@ dies. Either way it costs no label:
 software version agree within each model (`01`/`01` on the M2-H, `02`/`02` on the B1 Pro,
 `04`/`04` on the D11_H). Three samples, and nothing depends on it.
 
+### `AC` is the dpi class — the B1 answered `02` (2026-09-07)
+
+The fourth `de` sample, and it was taken to kill a guess rather than to confirm one.
+
+    M2-H     de:  01 01  01 36  [02 40 = 576]  03  02 01 00
+    D11_H    de:  04 01  04 1c  [00 90 = 144]  03  02 01 00
+    B1 Pro   de:  02 01  02 0c  [02 40 = 576]  03  02 01 00
+    B1       de:  03 01  03 08  [01 80 = 384]  02  02 01 00
+                                               ^^ AC
+
+The first three are 300 dpi and all answer `AC = 03`. The B1 is **203 dpi and answers
+`02`**. That was the prediction written down before the reading: a field called "print
+accuracy" that never varies is not print accuracy. It varied exactly where it had to.
+
+**So the printer reports its own dpi class**, and the two known values line up with the two
+px/mm constants at every head width measured here:
+
+| model | `AC` | head | catalog mm | head ÷ mm |
+|---|---|---|---|---|
+| B1 | `02` | 384 | 48 | **8.0** |
+| B1 Pro | `03` | 576 | 48 | **12.0** |
+| B2 Pro | `03` | 576 | 48 | **12.0** |
+| M2-H | `03` | 576 | 48 | **12.0** |
+| D11_H | `03` | 144 | 12 | **12.0** |
+
+Exact in every row, no rounding. `AC 02` goes with 8 px/mm (203.2 dpi, sold as "203") and
+`AC 03` with 12 px/mm (304.8 dpi, sold as "300"). Whether `AC` is an index or something like
+dpi/100 cannot be told from two values.
+
+**What this is good for.** Geometry no longer needs a catalog at all on a printer that
+answers `0xDC[0x03]`: the width comes from bytes 4-5 and the scale from `AC`, both from the
+device. That is the same argument this project already makes for `w_px` — ask the printer
+instead of deriving — now extended to the dpi.
+
+**And `HA` is dead as a lead.** It is `02` on all four samples, spanning heads of 384, 576,
+576 and 144 and both dpi classes. A field constant across every sample carries no per-model
+information, so it is not the head-versus-window difference the 584 question was looking
+for. That question stays open and stays unanswerable from here.
+
+**Still not established:** anything about the models nobody here owns. Two `AC` values are
+two data points; a 600 dpi model, if one exists, would say whether `AC` is an index or an
+arithmetic encoding.
+
 ### Open: 576 dots, or a 576-wide window inside a 584-dot head? (2026-09-07)
 
 The maintainer raised this straight after the staircase print, and he is right that **the
