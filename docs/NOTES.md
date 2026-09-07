@@ -1030,3 +1030,38 @@ label with 1 row of correction means the printable area IS 400 rows over 50 mm �
 dead on 203 dpi**. The ruler print had put it at ~7.8 px/mm from a "5 mm short of the edge"
 eyeball; this lands on the nominal value from a completely different measurement, with no
 estimation in it. Two independent routes, and the spec sheet's 300 dpi is out by 46 %.
+
+## The B1 Pro reports a 576 px head, and `T50x30` sends 584 (2026-09-07)
+
+`await Niimbot.probe(0xdc, [0x03])` on a **B1 Pro (model id 4097)** answers **576**. The
+reading was taken on a Windows host, `writeMode=fast`, driver 2.4.0, and it spends no label.
+
+**`T50x30` in `registry.json` has `w_px: 584`.** The driver sends `w_px` as `W` in
+SetPageSize, the printer prints columns `0 … W-1`, and anything past the head is dropped with
+no error at any layer. If 576 is the head, the rightmost **8 px = 0.68 mm** of every B1 Pro
+label has never printed.
+
+This is the M2-H story again, on the printer the M2-H story was originally reasoned from.
+T-020 withdrew the claim that the M2-H head "reaches at least 584" — the claim rested on
+solid black printing edge to edge at 584, and `dc[03]` answered 576, with the note that 8 px
+is inside what "it reached the edge" can hide. The same argument applies here, and now the
+B1 Pro has answered for itself.
+
+**Where the number came from.** 576 was not read off this printer first: it was *predicted*.
+The community wiki's model table is generated from NIIMBOT's cloud catalog by
+`fill_info_from_cloud.py`, which converts a millimetre width with `{"203": 8, "300": 11.81}`
+px/mm. The 203 row is exact; 11.81 is 300 dpi pushed through 25.4. These printers are
+**12 px/mm** (304.8 dpi, rounded to "300" in the catalog exactly as 8 px/mm = 203.2 dpi is
+rounded to "203"), so every 300 dpi width in that table is short. 48 mm × 12 = 576. The
+constant was derived from the B2 Pro, M2-H and D11_H, all of which report values matching
+12 px/mm; the B1 Pro was then written down as 576 **before** being measured, as the test
+that could refute it, and it answered 576. Reported upstream:
+https://github.com/MultiMote/niimbot-wiki/issues/3
+
+**What is NOT established.** That 584 is wrong on paper. The printer reporting 576 and the
+driver silently dropping columns past the head are both documented behaviour, but the
+discriminating print — solid black at `w_px` 584 versus at 576 on a B1 Pro, compared for
+width — has not been run. That is the same test that settled the D11_H (177 versus 144 came
+out identical), and it is the maintainer's step. Until then 576 is *reported*, not
+*confirmed on paper*, which is the exact wording T-020 chose for the M2-H and for the same
+reason.
