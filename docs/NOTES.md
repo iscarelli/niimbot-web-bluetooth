@@ -1111,6 +1111,28 @@ candidates inside the image — the same move as the row-numbered ruler that set
 dpi — turns "is it wider?" into "which marks are there?", and the second question has one
 answer.
 
+### The 203 dpi side confirmed too: the B1 reports 384 (2026-09-07)
+
+`probe(0xdc,[0x03])` on a **B1 (model id 4096)** answers **384**, which is 48 mm x 8 px/mm
+and exactly what the constant predicted. This is the row of `ppmm_dict` that was already
+correct upstream and that the proposed fix does **not** touch, so it is the control: a fix
+that moved this number would have been the wrong fix.
+
+Both dpi classes are now sourced from hardware rather than from a catalog:
+
+| px/mm | model | reported | on paper |
+|---|---|---|---|
+| 8 ("203") | B1 | 384 | not run |
+| 8 | D110, N1 | refused | 96 |
+| 12 ("300") | B1 Pro | 576 | 576 exactly |
+| 12 | B2 Pro | 576 | edge to edge at 576 |
+| 12 | M2-H | 576 | not run |
+| 12 | D11_H | 144 | 144 |
+
+**And `T50x30_b1` needs nothing.** Its `w_px` is 384, which is the head to the pixel, so the
+B1 has never lost a column. The B1 Pro is the only shipped size that overruns its head, which
+is what T-023 fixes.
+
 ### Open: 576 dots, or a 576-wide window inside a 584-dot head? (2026-09-07)
 
 The maintainer raised this straight after the staircase print, and he is right that **the
