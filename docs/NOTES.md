@@ -394,7 +394,7 @@ Answers the b1 handshake never asks for:
 | `40[0f]` | `4f` | `00 1a` (26) | unexplained |
 | `dc[01]` | `dd` 13 b | `1f 56 00 0b 00 0b 00 00 4b 00 04 00 01` | heartbeat *Advanced1* |
 | `dc[02]` | `df` 12 b | all zeros | unexplained |
-| `dc[03]` | `de` 10 b | `01 01 01 36 02 40 03 02 01 00` | unexplained; note `01 36` also appears as `40[09]` |
+| `dc[03]` | `de` 10 b | `01 01 01 36 02 40 03 02 01 00` | **printhead width and capabilities** — see the `dc[03]` section below; `01 36` also appears as `40[09]` |
 
 Already known from the handshake: `40[08]`=model id, `40[09]`=`01 36`, `40[0a]`=`04`,
 `40[0b]`=serial, `40[0c]`=`01 01`, `40[0d]`=`02 11 07 06 00 27`, `a5`→`b5`.
@@ -469,6 +469,21 @@ out *exactly the same width* — both clipped at the same limit — while 136 px
 visibly narrower. So the head is 144, which is what `dc[03]` said.
 
 (The first two fields of `de` are not new: they repeat `40[0c]` and `40[09]`.)
+
+**The rest of the payload was named upstream on 2026-09-07** (MultiMote, niimbot-wiki
+issue #3), and it resolves the "unexplained" marker this file carried for `dc[03]`:
+
+    55 55 de 0a  VH VL  VH VL  WH WL  AC  HA  SR  SW  XX  aa aa
+                 └hw─┘  └sw─┘  └width┘  │   │   │   └ supports write RFID
+                                        │   │   └ supports RFID
+                                        │   └ printhead alignment
+                                        └ print accuracy
+
+Against the two captures here, `AC HA SR SW` is `03 02 01 00` on **both** the M2-H and the
+D11_H. So **`HA` does not scale with the head**: it is 2 on a 576 px head and 2 on a 144 px
+one. Whatever "printhead alignment" counts, it is not a per-model difference between a
+physical head and a printable width, and nothing here has established what it does count.
+Two samples, both 300 dpi, both `03 02`, is not enough to guess from.
 
 **This retracts something claimed earlier today.** The M2-H note said its head "reaches at
 least 584" because solid black at 584 printed edge to edge. `dc[03]` says **576**, and
