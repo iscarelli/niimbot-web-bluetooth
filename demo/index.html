@@ -286,7 +286,14 @@
     });
 
     if (!Niimbot.isSupported()) {
-      $("status").innerHTML = '<span class="warn">Web Bluetooth unavailable. Use Chrome/Edge (desktop) or Chrome (Android) over HTTPS or localhost, or on iOS use <a href="https://apps.apple.com/app/bluefy-web-ble-browser/id1492822055" target="_blank" rel="noopener">Bluefy</a>, since Safari and Chrome do not support Web Bluetooth there.</span>';
+      // Same split as src/niimbot.js's connect() throw: `!navigator.bluetooth` alone
+      // doesn't say WHY, and telling everyone to check HTTPS sent the launch's first
+      // real user (r/selfhosted, 2026-09-09, already on HTTPS) looking in the wrong
+      // place — his browser (Brave) just doesn't expose the API. `isSecureContext` is
+      // the one signal the browser itself gates on, so it's what tells the two apart.
+      $("status").innerHTML = window.isSecureContext
+        ? '<span class="warn">This browser doesn\'t expose Web Bluetooth (the page is secure, so that\'s not the issue). Use Chrome, Edge or Opera on desktop, or Chrome on Android — Brave and some other Chromium builds ship Web Bluetooth off by default, behind a flag. On iOS use <a href="https://apps.apple.com/app/bluefy-web-ble-browser/id1492822055" target="_blank" rel="noopener">Bluefy</a>, since Safari and Chrome do not support Web Bluetooth there.</span>'
+        : '<span class="warn">Web Bluetooth unavailable. Use Chrome/Edge (desktop) or Chrome (Android) over HTTPS or localhost, or on iOS use <a href="https://apps.apple.com/app/bluefy-web-ble-browser/id1492822055" target="_blank" rel="noopener">Bluefy</a>, since Safari and Chrome do not support Web Bluetooth there.</span>';
       $("print").disabled = true;
     }
 

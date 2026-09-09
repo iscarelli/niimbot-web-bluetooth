@@ -5,6 +5,21 @@ All notable changes to this project are documented here. The format is based on
 [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
+### Fixed
+- **T-025 — tell "no Web Bluetooth" apart from "insecure context"**: `connect()`'s
+  `!navigator.bluetooth` check (`src/niimbot.js`) and the demo's matching warning
+  (`demo/index.html`) blamed HTTPS unconditionally, and that sent the launch's first
+  real user (r/selfhosted, 2026-09-09) looking in the wrong place — he was already on
+  HTTPS, and the real cause was his browser (Brave) not exposing Web Bluetooth at all,
+  which it keeps behind a flag by default. Both now branch on `isSecureContext`
+  (`root.isSecureContext` in the driver, `window.isSecureContext` in the demo, which is
+  what the browser itself gates the API on): secure context + no API now says the
+  browser doesn't expose Web Bluetooth and names Brave as the likely cause; insecure
+  context keeps the original HTTPS/localhost message. `isSupported()`'s signature is
+  unchanged (`!!navigator.bluetooth`). Covered by
+  `test/bluetooth-unsupported.test.js`, both branches passing with no printer
+  involved.
+
 ### Added
 - **T-024 — issue template for model reports** (`.github/ISSUE_TEMPLATE/model-report.yml`,
   `.github/ISSUE_TEMPLATE/config.yml`): a GitHub issue form asking for the model id read on

@@ -430,7 +430,20 @@
   async function connect(model) {
     if (characteristic && device && device.gatt.connected) return;
     logMsg(`Niimbot ${VERSION} — connecting (task=${(model && model.task) || "?"})`);
-    if (!navigator.bluetooth) throw new Error("Web Bluetooth unavailable (use Chrome/Edge over HTTPS).");
+    // `!navigator.bluetooth` has two different causes and they need different advice.
+    // `isSecureContext` is what the browser itself gates the API on, so it is the
+    // one signal that tells them apart (read off `root`, the module's window/globalThis
+    // — a bare `window` reference throws in the Node harnesses this file also runs
+    // under). Conflating the two causes sent the launch's first real user
+    // (r/selfhosted, 2026-09-09, on HTTPS) to check his connection when the actual
+    // cause was Brave — which ships without Web Bluetooth, behind a flag — not
+    // exposing the API at all.
+    if (!navigator.bluetooth) {
+      if (root.isSecureContext) {
+        throw new Error("This browser doesn't expose Web Bluetooth (the page is secure, so that's not the issue). Use Chrome, Edge or Opera on desktop, or Chrome on Android — Brave and some other Chromium builds ship Web Bluetooth off by default, behind a flag.");
+      }
+      throw new Error("Web Bluetooth unavailable (use Chrome/Edge over HTTPS).");
+    }
     const prefixes = (model && model.name_prefixes) || [];
     // Filter the chooser by advertised-name prefix (known per model).
     //
