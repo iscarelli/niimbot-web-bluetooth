@@ -4,6 +4,20 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/), and this project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+### Fixed
+- **T-023 — narrow `T50x30` to the printhead width the B1 Pro reports**: `w_px` for the
+  B1 Pro's `T50x30` entry drops from 584 to **576**, matching the head the printer itself
+  reports via `probe(0xdc,[0x03])` (model id 4097, read 2026-09-07). The rightmost 8 px
+  (0.68 mm) of every B1 Pro label sent at 584 was silently dropped, no error at any layer
+  — the same defect T-020 retracted for the M2-H, now measured on the B1 Pro itself. The
+  576 figure **is confirmed on paper** (docs/NOTES.md, 2026-09-07): printing four 4 px
+  steps at columns 568, 572, 576 and 580 with `w_px` 584, the steps at 568 and 572 came
+  out and those at 576 and 580 did not, so columns 0-575 print and 576 does not — but that
+  confirmation predates this task; this change itself only edits `registry.json` and
+  `README.md` and exercises no print path. `T50x30_m2h` (567) and `T50x30_b2pro` (576) are
+  untouched.
+
 ## [2.4.0] - 2026-08-15
 ### Added
 - **T-017 — bring-up harness for the browser console (`test/bringup.mjs`)**: the tests that

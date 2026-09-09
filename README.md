@@ -109,7 +109,7 @@ The app picks the printer by passing a **`model`** and **`size`** object (both f
   advertised-name prefixes used to filter the browser's device chooser.
 - **`size`** is the label geometry in pixels: `w_px` (printhead axis) × `h_px` (feed
   axis), calibrated **per dpi**. A 50×30 mm label is a *different* pixel size on the B1
-  (384×240 @ 203 dpi) than on the B1 Pro (584×354 @ 300 dpi) — always pair a size with
+  (384×240 @ 203 dpi) than on the B1 Pro (576×354 @ 300 dpi) — always pair a size with
   a model of the **same dpi**.
 
   ⚠ **Same dpi is not enough — pair by MODEL.** The registry ships *four* 50×30 mm
@@ -117,7 +117,7 @@ The app picks the printer by passing a **`model`** and **`size`** object (both f
 
   | id | model | `w_px` | why that width |
   |---|---|---|---|
-  | `T50x30` | B1 Pro | 584 | the printable width used on that printer |
+  | `T50x30` | B1 Pro | 576 | the printhead width the printer reports itself |
   | `T50x30_b2pro` | **B2 Pro** | **576** | the printhead width the printer reports itself |
   | `T50x30_m2h` | **M2-H** | **567** | a deliberate ~1.4 mm right margin — see below |
   | `T50x30_b1` | B1 | 384 | 203 dpi |
@@ -151,7 +151,7 @@ The app picks the printer by passing a **`model`** and **`size`** object (both f
 
   | id | printer | mm | dpi | px (`w_px × h_px`) |
   |---|---|---|---|---|
-  | `T50x30` | B1 Pro | 50 × 30 | 300 | 584 × 354 |
+  | `T50x30` | B1 Pro | 50 × 30 | 300 | 576 × 354 |
   | `T50x30_b2pro` | B2 Pro | 50 × 30 | 300 | 576 × 354 |
   | `T50x30_b1` | B1 | 50 × 30 | 203 | 384 × 240 |
   | `T50x30_m2h` | M2-H | 50 × 30 | 300 | 567 × 354 |
@@ -201,7 +201,7 @@ On the first connect the browser shows its Bluetooth chooser (filtered by
 <script>
   // Pull these from registry.json — shown inline here for clarity.
   // B1 (203 dpi):    task "b1", size 384×240
-  // B1 Pro (300 dpi): task "v4", size 584×354
+  // B1 Pro (300 dpi): task "v4", size 576×354
   const model = { name_prefixes: ["B1"], task: "b1", density: 3, label_type: 1, speed: 1 };
   const size  = { w_px: 384, h_px: 240, offset_y_px: 4 };   // T50×30 on the B1
 

@@ -86,11 +86,12 @@
   },
   "sizes": {
     "T50x30": {
+      "_note": "B1 Pro 50×30 @ 300 dpi. w_px 576 is the printhead width the printer reports via probe(0xdc,[0x03]) on a B1 Pro (model id 4097, read 2026-09-07), AND confirmed on paper the same day: printing four 4 px steps at columns 568, 572, 576 and 580 with w_px 584, the steps at 568 and 572 came out and those at 576 and 580 did not, so columns 0-575 print and 576 does not. The previous 584 exceeded the head by 8 px = 0.68 mm, which prints nothing and raises no error. See docs/NOTES.md, the two sections dated 2026-09-07.",
       "label": "50 × 30 mm",
       "code": "T50*30",
       "w_mm": 50,
       "h_mm": 30,
-      "w_px": 584,
+      "w_px": 576,
       "h_px": 354,
       "margin": 10,
       "dpi": 300
