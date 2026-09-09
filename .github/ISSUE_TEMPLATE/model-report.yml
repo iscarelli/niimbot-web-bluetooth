@@ -1,0 +1,74 @@
+name: Model report
+description: Report how a Niimbot printer model behaved with this driver.
+title: "Model report: "
+labels:
+  - model-report
+body:
+  - type: markdown
+    attributes:
+      value: |
+        The model id shows up in the demo's identification panel right after you
+        connect — grab it from there rather than guessing from the box. A photo
+        of the printed label (or of what should have printed) says more than any
+        description of it.
+  - type: input
+    id: model-id
+    attributes:
+      label: Model id read on connect
+      description: The number shown in the demo's identification panel after connecting.
+    validations:
+      required: true
+  - type: input
+    id: box-model
+    attributes:
+      label: Printer model printed on the box
+      placeholder: "e.g. B21, D11, B21S"
+    validations:
+      required: true
+  - type: input
+    id: bluetooth-name
+    attributes:
+      label: Bluetooth name shown in the chooser
+    validations:
+      required: true
+  - type: input
+    id: label-size
+    attributes:
+      label: Label size in mm (width x height)
+      placeholder: "e.g. 50 x 30"
+    validations:
+      required: false
+  - type: dropdown
+    id: outcome
+    attributes:
+      label: What happened
+      options:
+        - printed correctly
+        - printed blank
+        - printed short or truncated
+        - printed at the wrong scale
+        - never connected
+        - other
+    validations:
+      required: true
+  - type: textarea
+    id: console-output
+    attributes:
+      label: Demo console output
+      render: text
+    validations:
+      required: false
+  - type: textarea
+    id: anything-else
+    attributes:
+      label: Anything else
+      description: A photo of the label (or of what should have printed) helps a lot.
+    validations:
+      required: false
+  - type: checkboxes
+    id: confirmation
+    attributes:
+      label: Confirmation
+      options:
+        - label: This report is from real hardware, not a guess or assumption.
+          required: true

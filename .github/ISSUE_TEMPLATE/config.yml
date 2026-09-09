@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Live demo
+    url: https://iscarelli.github.io/niimbot-web-bluetooth/demo/
+    about: Read your printer's model id before reporting

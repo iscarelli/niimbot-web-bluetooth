@@ -5,6 +5,14 @@ All notable changes to this project are documented here. The format is based on
 [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
+### Added
+- **T-024 — issue template for model reports** (`.github/ISSUE_TEMPLATE/model-report.yml`,
+  `.github/ISSUE_TEMPLATE/config.yml`): a GitHub issue form asking for the model id read on
+  connect, the printer model printed on the box, the Bluetooth name shown in the chooser,
+  label size, what happened, and the demo console output, plus a checkbox confirming the
+  report is from real hardware. `config.yml` keeps blank issues open and points to the live
+  demo so reporters read the model id before filing.
+
 ### Fixed
 - **T-023 — narrow `T50x30` to the printhead width the B1 Pro reports**: `w_px` for the
   B1 Pro's `T50x30` entry drops from 584 to **576**, matching the head the printer itself
