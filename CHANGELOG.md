@@ -4,6 +4,15 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/), and this project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+### Added
+- **T-024 — issue template for model reports** (`.github/ISSUE_TEMPLATE/model-report.yml`,
+  `.github/ISSUE_TEMPLATE/config.yml`): a GitHub issue form asking for the model id read on
+  connect, the printer model printed on the box, the Bluetooth name shown in the chooser,
+  label size, what happened, and the demo console output, plus a checkbox confirming the
+  report is from real hardware. `config.yml` keeps blank issues open and points to the live
+  demo so reporters read the model id before filing.
+
 ## [2.4.0] - 2026-08-15
 ### Added
 - **T-017 — bring-up harness for the browser console (`test/bringup.mjs`)**: the tests that
