@@ -14,30 +14,30 @@ and hardware confirmation is the maintainer's separate step.
 Why:     medido na D11_H em 2026-09-10: dez PageEnd num lote de 10 páginas levaram
          2057, 2080, 2208, 2337, 2379, 2532, 2629, 2635, 2666 e 2684 ms, e uma
          tentativa anterior estourou os 3000 ms por ~70 ms e matou o job. O default
-         herdado dá margem de coin flip, e o `e4` chega DEPOIS de a página imprimir,
-         então o teto tem de ser maior que o tempo físico de uma etiqueta.
+         herdado dá margem de sorte, não de projeto.
 Files:   src/niimbot.js, docs/NOTES.md, docs/protocol-v4.md, CHANGELOG.md
 Vikunja: 1540
-Do:      1. `PAGE_ACK_MS` passa de 3000 para **10000**. O comentário dela troca "3000
-            é herdado e nunca foi medido" por: 10000 é MEDIDO com folga sobre a
-            distribuição observada na D11_H (2,0 a 2,7 s, com uma excursão além de
-            3,0 s), e o custo de errar para cima é só demorar mais a declarar uma
-            página que a impressora nunca vai confirmar.
+Do:      1. `PAGE_ACK_MS` passa de 3000 para **10000**. O comentário troca "3000 é
+            herdado e nunca foi medido" por: 10000 é escolhido COM FOLGA sobre a
+            distribuição medida na D11_H (2,0 a 2,7 s, com uma excursão além de
+            3,0 s), e errar para cima só custa demorar mais a declarar uma página que
+            a impressora nunca vai confirmar.
          2. Ainda em `src/niimbot.js`, corrija o texto do log que hoje diz
             `image buffered (PageEnd acked)` / `page N: buffered (PageEnd acked)`.
-            Na D11_H o `0xE4` chega **depois** de a página imprimir (o contador
-            responde `print 100%` ~100 ms depois), então "buffered" afirma o que os
-            dados negam. Use algo que diga apenas o que se sabe, como
-            `PageEnd acked`, e deixe a explicação para o NOTES. Não invente o mesmo
-            comportamento para os outros modelos: só a D11_H foi medida.
+            "buffered" é uma afirmação sobre o que a impressora fez com a página, e
+            nada aqui a sustenta. Use só o que se sabe: `PageEnd acked`.
          3. `docs/NOTES.md`: seção nova com a medição — data, modelo, os dez números,
-            a página de 79 frames usada, o fato de a falha ter sido reproduzida com
-            3000 e sumido com 10000, e a inferência de que o ack segue a impressão
-            física (com o ponteiro para as linhas do contador que sustentam isso).
-            Diga também o que NÃO foi medido: os demais modelos.
+            a página de 79 frames usada, e a falha reproduzida com 3000 e ausente com
+            10000. Registre também a SEQUÊNCIA observada, que é o achado e contraria
+            o que se poderia supor: o `0xE4` chega 2,0 a 2,7 s depois do `0xE3`, e a
+            impressão só então acontece — o contador vai de 0 % a 100 % DEPOIS do
+            ack, em cerca de 1 s (linhas do log de 2026-09-10). Portanto o atraso
+            NÃO é o tempo de imprimir a página; o que a impressora faz nesses
+            segundos é desconhecido, e escrever qualquer explicação seria invenção.
+            Diga ainda o que não foi medido: os demais modelos.
          4. `docs/protocol-v4.md`: na descrição do PageEnd (`0xE3` → `0xE4`),
-            acrescente que na D11_H o ack só volta depois de a página sair, com o
-            intervalo medido, e que o `0xD3` aparece um instante antes do `0xE4`.
+            acrescente o intervalo medido na D11_H, que a impressão vem depois do ack,
+            e que um `0xD3` aparece alguns ms antes do `0xE4`.
          5. `CHANGELOG.md` sob `## [Unreleased]`. Não bump de versão.
 Verify:  node --check src/niimbot.js
          node test/unconfirmed.test.js
