@@ -282,7 +282,7 @@ because these are absolute offsets and the layout has been seen at exactly one s
 |---|---|---|---|
 | 0 | — | constant `0x1f` in all six captures; not decoded | — |
 | 1 | — | **not decoded** — proposed as an error code and refuted, see above | — |
-| 2 | `chargeLevel` | battery level (niimbluelib's name; constant `0x50` across the captures) | `inferred` |
+| 2 | `chargeLevel` | battery level (niimbluelib's name; constant `0x50` across the captures; the M2-H reads `0x04` in the same slot, asked upstream at [niimbluelib#28](https://github.com/MultiMote/niimbluelib/issues/28)) | `inferred` |
 | 3 | `temp` | rises with print activity; **unit unverified** | `varies` |
 | 4 | `lidClosed` | **`0` = closed**, `1` = open | `observed` |
 | 5 | `paperInserted` | **`0` = inserted**, `1` = absent | `observed` |

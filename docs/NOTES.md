@@ -341,6 +341,12 @@ Captured M2-H heartbeats (physical state at capture NOT recorded — see below):
 same slot is as easily a different layout as a different battery, and nothing here
 separates the two.
 
+Asked upstream on 2026-09-09: [niimbluelib#28](https://github.com/MultiMote/niimbluelib/issues/28)
+carries both captures and the open question, which is where the `chargeLevel` name and
+offset came from. If the answer names a model where the byte is known to track the
+battery, the A/B that settles it (charge full, capture, drain, capture) is worth running
+here.
+
 **What would make these bytes usable:** the same discipline the B1 Pro captures had —
 record the raw bytes *alongside the physical state* (lid open/closed, roll in/out, tag
 present/absent). Three `Read status` calls with the lid and roll deliberately varied
