@@ -348,9 +348,24 @@ heartbeat carry the same value, and that deciding **which** scale a given printe
 is still open upstream: above 4 the value can only be a percentage, but 0–4 is
 undecidable from the value alone.
 
-The A/B still worth running here is on the M2-H: leave it off the charger until the byte
-moves and see whether it steps `4 → 3` (enum) or `100 → 99` (percentage). That is a
-model MultiMote does not have, and it costs no labels.
+**And the B1 Pro half is now measured, not inferred.** A NiimBlue capture on 2026-09-10
+(posted to the same issue) read `0x28` = 40 in that byte, against `0x50` = 80 in all six
+earlier captures of the same printer — and `In_PrinterInfoChargeLevel` (`0x40[0x0a]`)
+returned `0x28` in the same connection. Two sources agreeing, and a value that moved with
+the battery: on this model the byte is a percentage.
+
+The A/B still worth running is on the M2-H: leave it off the charger until the byte moves
+and see whether it steps `4 → 3` (enum) or `100 → 99` (percentage). MultiMote has no
+M2-H, and it costs no labels.
+
+Two more things that capture settled, both about bytes this table calls undecoded:
+
+- **Byte 0 is not constant.** It read `0x1d` there against `0x1f` in the six earlier
+  captures.
+- **Byte 1 is a counter.** It stepped `de → df → e0 → e1`, one per heartbeat inside the
+  session. That is the third piece of evidence against the "error code" reading.
+- **`RfidInfo2` (`0x1c`) answers `In_NotSupported`** on the B1 Pro, joining `40[04]` and
+  `40[05]` on the list of commands the table documents and the firmware refuses.
 
 **What would make these bytes usable:** the same discipline the B1 Pro captures had —
 record the raw bytes *alongside the physical state* (lid open/closed, roll in/out, tag

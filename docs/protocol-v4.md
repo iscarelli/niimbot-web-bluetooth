@@ -280,8 +280,8 @@ because these are absolute offsets and the layout has been seen at exactly one s
 
 | Offset | Field | Meaning | Evidence |
 |---|---|---|---|
-| 0 | — | constant `0x1f` in all six captures; not decoded | — |
-| 1 | — | **not decoded** — proposed as an error code and refuted, see above | — |
+| 0 | — | `0x1f` in the first six captures and `0x1d` in a seventh, so **not** constant; not decoded | — |
+| 1 | — | **not decoded** — a counter: it steps by 1 per heartbeat within a session (`de → df → e0 → e1`), which refutes the error-code reading a third time | — |
 | 2 | `chargeLevel` | battery level — an **enum** (`0..4` = 0/25/50/75/100 %) on most models, a **percentage** on some newer ones (B1 PRO, B2 PRO): the B1 Pro's constant `0x50` is 80 %, the M2-H's `0x04` is `Charge100`. Which scale a printer speaks cannot be told from the value when it is ≤ 4 ([niimbluelib#28](https://github.com/MultiMote/niimbluelib/issues/28)) | `inferred` |
 | 3 | `temp` | rises with print activity; **unit unverified** | `varies` |
 | 4 | `lidClosed` | **`0` = closed**, `1` = open | `observed` |
