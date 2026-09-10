@@ -8,12 +8,22 @@ All notable changes to this project are documented here. The format is based on
 ### Added
 - **Hardware confirmation, 2026-09-10** (recorded by T-031): the status line after *Identify* and the
   battery reading below it were seen working on three printers, a B1, a B1 Pro and a
-  D11_H. That confirms the line renders and is populated on those three; it does
-  **not** confirm the `"enum"` scale carried by every model but the B1 Pro, which
-  still rests on the upstream default. Also on 2026-09-10, the `T12x22` size
+  D11_H. That confirms the line renders and is populated on those three. It also
+  confirms, against the official NIIMBOT app, the `"enum"` scale on two of the three:
+  the B1 read chargeLevel 4 against the app's 100% (a percent scale would have shown
+  4%), and the D11_H read chargeLevel 3 against the app's 75%, the non-trivial case
+  since it isn't a scale endpoint. Every other model's `"enum"` still rests on the
+  upstream default, unmeasured here. Also on 2026-09-10, the `T12x22` size
   (`registry.json`) was printed on the D11_H with its `offset_y_px` -6 applied and
   came out registered correctly — that -6 had only been derived from an offset-0
   print before, not seen printed.
+- **T-032 — the B1 and the D11_H enum scale is measured now, not assumed**
+  (2026-09-10): the `MODEL_IDS` comments for the B1 (4096) and the D11_H (528) said
+  `"enum"` was only the upstream default, unverified on those models. The hardware
+  confirmation above measured both against the official NIIMBOT app — B1 chargeLevel
+  4 against the app's 100%, D11_H chargeLevel 3 against the app's 75% — so both
+  comments now say MEASURED, with the reading that confirms it. No other model's
+  comment changed: for those, `"enum"` is still the unverified upstream default.
 - **T-030 — show lid, paper and battery right after identify** (2026-09-10):
   the *Identify* button already read the printer's status to restore the
   remembered label size for the tag on the roll, then threw the reading away.
