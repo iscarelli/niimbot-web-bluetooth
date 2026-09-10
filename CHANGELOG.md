@@ -10,8 +10,8 @@ All notable changes to this project are documented here. The format is based on
   `T30x45_b1` (30 × 45 mm cable flag, 203 dpi, `code` "T30*45+50", 240 × 360 px) and
   `T25x38_b1` (25 × 38 mm cable flag, 203 dpi, `code` "T25*38+40", 200 × 304 px), the
   B1 (203 dpi) siblings of the existing 300 dpi `T30x45`/`T25x38` entries — the demo's
-  exact-dpi filter (`demo/index.html:343`) meant a B1 user only ever saw one cable-flag
-  size. Geometry is derived from the B1's own 8.0 px/mm scale (`T50x30_b1`) and is
+  exact-dpi filter (`demo/index.html:343`) meant a B1 user saw no cable-flag size at
+  all. Geometry is derived from the B1's own 8.0 px/mm scale (`T50x30_b1`) and is
   **not confirmed on paper** — neither size has been printed. No `offset_y_px` on
   either entry until someone measures one.
 - **T-026 — ship the D11 12×22 mm label size** (`registry.json`): added `T12x22`
