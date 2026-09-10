@@ -282,7 +282,7 @@ because these are absolute offsets and the layout has been seen at exactly one s
 |---|---|---|---|
 | 0 | — | constant `0x1f` in all six captures; not decoded | — |
 | 1 | — | **not decoded** — proposed as an error code and refuted, see above | — |
-| 2 | `chargeLevel` | battery level (niimbluelib's name; constant `0x50` across the captures; the M2-H reads `0x04` in the same slot, asked upstream at [niimbluelib#28](https://github.com/MultiMote/niimbluelib/issues/28)) | `inferred` |
+| 2 | `chargeLevel` | battery level — an **enum** (`0..4` = 0/25/50/75/100 %) on most models, a **percentage** on some newer ones (B1 PRO, B2 PRO): the B1 Pro's constant `0x50` is 80 %, the M2-H's `0x04` is `Charge100`. Which scale a printer speaks cannot be told from the value when it is ≤ 4 ([niimbluelib#28](https://github.com/MultiMote/niimbluelib/issues/28)) | `inferred` |
 | 3 | `temp` | rises with print activity; **unit unverified** | `varies` |
 | 4 | `lidClosed` | **`0` = closed**, `1` = open | `observed` |
 | 5 | `paperInserted` | **`0` = inserted**, `1` = absent | `observed` |

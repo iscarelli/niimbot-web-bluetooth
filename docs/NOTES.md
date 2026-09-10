@@ -337,15 +337,20 @@ Captured M2-H heartbeats (physical state at capture NOT recorded — see below):
 `decodeHeartbeat` accepts any `0xD9` of ≥ 9 bytes, so it produces `layout:
 "advanced2/11"` — but marks every field `inferred`, because `observed` requires
 `n === 13`. That restraint looks right here: applying the 13-byte offsets gives
-`chargeLevel` = 4 on the M2-H against 80 on every B1 Pro capture. An 80 → 4 swing in the
-same slot is as easily a different layout as a different battery, and nothing here
-separates the two.
+`chargeLevel` = 4 on the M2-H against 80 on every B1 Pro capture.
 
-Asked upstream on 2026-09-09: [niimbluelib#28](https://github.com/MultiMote/niimbluelib/issues/28)
-carries both captures and the open question, which is where the `chargeLevel` name and
-offset came from. If the answer names a model where the byte is known to track the
-battery, the A/B that settles it (charge full, capture, drain, capture) is worth running
-here.
+**Answered upstream on 2026-09-10** ([niimbluelib#28](https://github.com/MultiMote/niimbluelib/issues/28)):
+it is the same field in two scales, not two layouts. Normally the byte is an enum —
+`0 = 0 %, 1 = 25 %, 2 = 50 %, 3 = 75 %, 4 = 100 %` — but some newer printers (B1 PRO,
+B2 PRO) return a percentage instead. So the M2-H's `4` is `Charge100` and the B1 Pro's
+`0x50` is 80 %. MultiMote adds that `PrinterInfo` (`0x40`, payload `0x0a`) and the
+heartbeat carry the same value, and that deciding **which** scale a given printer speaks
+is still open upstream: above 4 the value can only be a percentage, but 0–4 is
+undecidable from the value alone.
+
+The A/B still worth running here is on the M2-H: leave it off the charger until the byte
+moves and see whether it steps `4 → 3` (enum) or `100 → 99` (percentage). That is a
+model MultiMote does not have, and it costs no labels.
 
 **What would make these bytes usable:** the same discipline the B1 Pro captures had —
 record the raw bytes *alongside the physical state* (lid open/closed, roll in/out, tag
