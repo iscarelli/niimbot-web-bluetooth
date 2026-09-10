@@ -54,7 +54,10 @@ function handle(bytes) {
   payloads.push({ cmd, data: Array.from(bytes.slice(4, 4 + bytes[3])) });
   switch (cmd) {
     case 0xc1: break;                                  // connect
-    case 0x40: answer(0x4f, [0x10, 0x01]); break;      // PrinterInfo → model 4097 (B1 Pro)
+    case 0xa5:                                         // PrinterStatusData (detectPrinter)
+      answer(0xb5, [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 0]);
+      break;
+    case 0x40: answer(0x48, [0x10, 0x01]); break;      // PrinterModelId → model 4097 (B1 Pro)
     case 0x21: answer(0x31, [0x01]); break;            // SetDensity
     case 0x23: answer(0x33, [0x01]); break;            // SetLabelType
     case 0x01: answer(0x02, [0x01]); break;            // PrintStart
@@ -209,6 +212,26 @@ const sent = (cmd) => writes.indexOf(cmd);
     assert.ok(err, "printImage must reject too — it had the same defect");
     assert.match(err.message, /not confirmed/i);
     assert.equal(sent(0xf3), writes.length - 1, "PrintEnd must be the final write");
+  });
+
+  // ── (e) PAGE_ACK_MS caps ONE page's PageEnd ack, independently of PAGE_WAIT_MS ─
+  await ok("(e) a low PAGE_ACK_MS rejects an unacked PageEnd fast, not after PAGE_WAIT_MS", async () => {
+    reset({ ack: false });
+    const oldAckMs = Niimbot.PAGE_ACK_MS;
+    Niimbot.PAGE_ACK_MS = 50;          // far below PAGE_WAIT_MS (300 here, 25000 by default)
+    const t0 = Date.now();
+    let err = null;
+    try { await Niimbot.printBatch([PNG, PNG, PNG], { model: MODEL, size: SIZE }); }
+    catch (e) { err = e; }
+    const elapsed = Date.now() - t0;
+    Niimbot.PAGE_ACK_MS = oldAckMs;    // restore for any test that runs after this one
+    assert.ok(err, "an unacknowledged page must still reject");
+    assert.match(err.message, /page 1 of 3/, "the message must name the page: " + err.message);
+    assert.match(err.message, /50ms/, "the message must cite the PAGE_ACK_MS ceiling that expired: " + err.message);
+    // The old literal 3000ms PageEnd timeout would have made this take >3000ms; a real
+    // PAGE_ACK_MS control must reject close to the 50ms it was set to, not near the old
+    // hardcoded value — that gap is what proves the knob is wired to the right wait.
+    assert.ok(elapsed < 1000, `expected a fast rejection (<1000ms) with PAGE_ACK_MS=50, took ${elapsed}ms`);
   });
 
   // ── (d) A failure stops the loop instead of streaming the rest ─────────────

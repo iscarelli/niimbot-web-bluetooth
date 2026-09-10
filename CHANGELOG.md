@@ -4,6 +4,20 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/), and this project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+### Added
+- **T-033 — expose the PageEnd timeout and log how long each ack took** (2026-09-10):
+  `PAGE_ACK_MS` (default 3000, unchanged — that value is still unmeasured, only now
+  it's a knob instead of a literal) replaces the hardcoded `3000` in the PageEnd
+  (0xE3→0xE4) wait inside `sendPagePacked`, exposed as a getter/setter alongside
+  `PAGE_WAIT_MS` — the two are distinct: `PAGE_ACK_MS` is the deadline for ONE
+  page's ack, `PAGE_WAIT_MS` is the deadline for the whole job's printed-page
+  counter. Every PageEnd now logs how long the ack took (or, on failure, how long
+  it waited before giving up), and an unconfirmed-page error now names the
+  `PAGE_ACK_MS` ceiling that expired. Prompted by a 10-page batch on a D11_H
+  reported cut off mid-page-1, where `PAGE_ACK_MS` was the prime suspect and there
+  was no way to raise it or see how long the ack had actually taken.
+
 ## [2.5.0] - 2026-09-10
 ### Added
 - **Hardware confirmation, 2026-09-10** (recorded by T-031): the status line after *Identify* and the

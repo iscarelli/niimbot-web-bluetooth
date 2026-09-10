@@ -963,7 +963,7 @@
   // next page can be sent while this one is still printing. That keeps the printer
   // buffer primed when the send can keep up; in "paced" on dense pages it cannot (see
   // the header block), and the printer idles between labels waiting for data.
-  async function sendPagePacked(model, size, buf, stride, copies, onProgress) {
+  async function sendPagePacked(model, size, buf, stride, copies, onProgress, tag) {
     const W = size.w_px, H = size.h_px;
     const c = Math.max(1, copies | 0);   // printer repeats this page `c` times from one upload
     if (isB1(model)) {
@@ -984,9 +984,23 @@
     // RETURN whether PageEnd was acknowledged. Discarding this is how a page that the
     // printer never confirmed still got logged as "buffered (PageEnd acked)", directly
     // under the ⚠ warning saying it had not been.
-    const pageEnd = await sendWait(0xe3, [0x01], 0xe4, 3000);                // PageEnd (0xE3)
+    const ackT0 = Date.now();
+    const pageEnd = await sendWait(0xe3, [0x01], 0xe4, PAGE_ACK_MS);          // PageEnd (0xE3)
+    const ackMs = Date.now() - ackT0;
+    const prefix = tag ? `${tag}: ` : "";
+    tlog(pageEnd != null
+      ? `${prefix}PageEnd acked in ${ackMs} ms`
+      : `${prefix}PageEnd UNACKED after ${ackMs} ms (PAGE_ACK_MS)`);
     return pageEnd != null;
   }
+
+  // How long to wait for ONE page's PageEnd ack (0xE3 → 0xE4) before giving up on that
+  // single page — see sendPagePacked above. This is NOT PAGE_WAIT_MS below: that one is
+  // the deadline for the whole job's printed-page COUNTER (see waitPage), a different
+  // wait entirely, and confusing the two is exactly the mistake this task exists to fix.
+  // 3000 is INHERITED from the driver's initial commit and has never been measured;
+  // raise it if a real printer needs longer than that to ack a single page.
+  let PAGE_ACK_MS = 3000;
 
   // How long to wait for the printed-page counter to reach a target before giving up.
   // Exposed because a test cannot afford to sit through the real value, and because an
@@ -1075,11 +1089,11 @@
         _lastPage = -1; _pageSeen = null;   // the printer's page counter resets at the start of EACH job (measured) — don't carry a stale value into the next one
         await beginJob(model, 1, (s) => onProgress && onProgress(`${tag}: ${s}`), density);
         tlog(`${tag}: job started (${size.w_px}×${size.h_px}, stride ${stride})`);
-        const acked = await sendPagePacked(model, size, buf, stride, 1, (s) => onProgress && onProgress(`${tag}: ${s}`));
+        const acked = await sendPagePacked(model, size, buf, stride, 1, (s) => onProgress && onProgress(`${tag}: ${s}`), tag);
         tlog(acked ? `${tag}: image buffered (PageEnd acked)` : `${tag}: image sent but PageEnd went UNACKED`);
         if (!acked) {
           await endJob();                     // feed the paper out before failing (see finishJob)
-          throw unconfirmed(`the printer never acknowledged PageEnd for ${tag}`);
+          throw unconfirmed(`the printer never acknowledged PageEnd for ${tag} after ${PAGE_ACK_MS}ms`);
         }
         await finishJob(model, 1, (s) => onProgress && onProgress(`${tag}: ${s}`));
       }
@@ -1096,7 +1110,7 @@
     tlog(acked ? `image buffered (PageEnd acked)` : `image sent but PageEnd went UNACKED`);
     if (!acked) {
       await endJob();                       // feed the paper out before failing (see finishJob)
-      throw unconfirmed("the printer never acknowledged PageEnd for the image");
+      throw unconfirmed(`the printer never acknowledged PageEnd for the image after ${PAGE_ACK_MS}ms`);
     }
     await finishJob(model, copies, onProgress);
     tlog(`done (PrintEnd acked)`);
@@ -1135,11 +1149,11 @@
         tlog(`${tag}: start sending`);
         _lastPage = -1; _pageSeen = null;   // the printer's page counter resets at the start of EACH job (measured) — don't carry a stale value into the next one
         await beginJob(model, 1, (s) => onProgress && onProgress(`${tag}: ${s}`), density);
-        const acked = await sendPagePacked(model, size, buf, stride, 1, (s) => onProgress && onProgress(`${tag}: ${s}`));
+        const acked = await sendPagePacked(model, size, buf, stride, 1, (s) => onProgress && onProgress(`${tag}: ${s}`), tag);
         tlog(acked ? `${tag}: buffered (PageEnd acked)` : `${tag}: sent but PageEnd went UNACKED`);
         if (!acked) {
           await endJob();                   // feed the paper out before failing (see finishJob)
-          throw unconfirmed(`page ${i + 1} of ${N} was never acknowledged (no PageEnd ack)`);
+          throw unconfirmed(`page ${i + 1} of ${N} was never acknowledged after ${PAGE_ACK_MS}ms (no PageEnd ack)`);
         }
         await finishJob(model, 1, (s) => onProgress && onProgress(`${tag}: ${s}`));
       }
@@ -1164,9 +1178,9 @@
       const { buf, stride } = await imageToPacked(urls[i], size.w_px, size.h_px, offsetY);
       tlog(`page ${i}: start sending`);
       const acked = await sendPagePacked(model, size, buf, stride, 1,
-        (s) => onProgress && onProgress(`${tag}: ${s}`));
+        (s) => onProgress && onProgress(`${tag}: ${s}`), tag);
       tlog(acked ? `page ${i}: buffered (PageEnd acked)` : `page ${i}: sent but PageEnd went UNACKED`);
-      if (!acked) { problem = `page ${i + 1} of ${N} was never acknowledged (no PageEnd ack)`; break; }
+      if (!acked) { problem = `page ${i + 1} of ${N} was never acknowledged after ${PAGE_ACK_MS}ms (no PageEnd ack)`; break; }
       // Send page i, THEN wait for page i-LOOKAHEAD to finish — so the just-sent
       // page is already buffered before the printer needs it (no inter-label stop).
       if (i - LOOKAHEAD >= 0) {
@@ -1193,6 +1207,9 @@
     get DEBUG() { return DEBUG; }, set DEBUG(v) { DEBUG = !!v; },
     get BUNDLE_MAX() { return BUNDLE_MAX; }, set BUNDLE_MAX(v) { BUNDLE_MAX = Math.max(0, v | 0); },
     get PACE_MS() { return PACE_MS; }, set PACE_MS(v) { PACE_MS = Math.max(0, v | 0); },
+    // How long to wait for ONE page's PageEnd ack — NOT PAGE_WAIT_MS below, which is the
+    // whole job's printed-page counter deadline. See sendPagePacked's comment.
+    get PAGE_ACK_MS() { return PAGE_ACK_MS; }, set PAGE_ACK_MS(v) { PAGE_ACK_MS = Math.max(1, v | 0); },
     // How long to wait for the printed-page counter before declaring a job unconfirmed.
     get PAGE_WAIT_MS() { return PAGE_WAIT_MS; }, set PAGE_WAIT_MS(v) { PAGE_WAIT_MS = Math.max(1, v | 0); },
     // Override the DETECTED write path: null (auto) | "fast" | "paced" | "acked".
