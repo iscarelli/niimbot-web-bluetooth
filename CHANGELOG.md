@@ -6,6 +6,24 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 ### Added
+- **T-029 — report the battery level, per model**: the same heartbeat byte
+  (`chargeLevel`) is a 0-100 percent on some printers and a 0-4 level on others, and
+  niimbluelib#28 (2026-09-10) is what first told the two apart. `MODEL_IDS`
+  (`src/niimbot.js`) now carries a `batteryScale` per model — `"percent"` for the B1
+  Pro (4097, **MEASURED here**: `chargeLevel` read 0x50/80 across six captures and
+  0x28/40 in another, matching `0x40[0x0a]` on the same connection) and the B2 Pro
+  (6912, from niimbluelib#28's upstream claim, not measured here), `"enum"` for every
+  other model (the upstream's documented default, not verified one by one). A new
+  pure reporter, `Niimbot.battery(status)`, converts `chargeLevel` per that scale and
+  returns `{ raw, scale, percent, text, evidence } | null`; a raw value outside its
+  model's range (enum > 4, percent > 100) is reported as `scale: "unknown"` with
+  `percent: null` rather than coerced into a plausible-looking number, and a status
+  with no decoded heartbeat returns `null` rather than a fake zero. Like
+  `readiness()`, it is pure and wired into no print path. The demo's *Read status*
+  panel (`demo/index.html`) now shows the reporter's text on the status line, marked
+  "(inferred)" whenever the evidence isn't `observed`, and shows nothing when
+  `battery()` returns null. `test/battery.test.js` covers percent/enum conversion,
+  both contradiction cases, and the no-heartbeat null case.
 - **T-027 — ship the two cable-flag sizes at 203 dpi** (`registry.json`): added
   `T30x45_b1` (30 × 45 mm cable flag, 203 dpi, `code` "T30*45+50", 240 × 360 px) and
   `T25x38_b1` (25 × 38 mm cable flag, 203 dpi, `code` "T25*38+40", 200 × 304 px), the

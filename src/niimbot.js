@@ -308,16 +308,21 @@
   // bundled writes, so it stays one-frame-per-write. `pagesPerJob` = caps how many
   // pages/copies a single job actually prints on this model (the D110 acks N but only
   // prints 1, see below). All three are per-MODEL, not per-task.
+  // `batteryScale` (added 2026-09-10, once niimbluelib#28 first told the two readings
+  // apart) says how to read heartbeat idx2 (`chargeLevel` — see decodeHeartbeat and
+  // battery() below): "percent" = the byte already IS 0-100; "enum" = it is a 0-4
+  // level, the upstream's documented default (0=0%, 1=25%, 2=50%, 3=75%, 4=100%). The
+  // two origins below are NOT the same kind of claim — see each entry.
   const MODEL_IDS = {
-    4096: { label: "Niimbot B1",     task: "b1", dpi: 203, paced: true,  bundle: true },
-    4097: { label: "Niimbot B1 Pro", task: "v4", dpi: 300, paced: false, bundle: false },
-    4098: { label: "Niimbot B1 SE",  task: "b1", dpi: 203, paced: true,  bundle: false },
-    4608: { label: "Niimbot M2-H",   task: "b1", dpi: 300, paced: false, bundle: true },  // B1-Pro-class: b1 command sequence (per niimbluelib; v4 tested no better) + fast writes
+    4096: { label: "Niimbot B1",     task: "b1", dpi: 203, paced: true,  bundle: true,  batteryScale: "enum" },     // "enum" is the upstream default; not verified on this model
+    4097: { label: "Niimbot B1 Pro", task: "v4", dpi: 300, paced: false, bundle: false, batteryScale: "percent" }, // MEASURED here: chargeLevel read 0x50 (80) across six captures and 0x28 (40) in another, and on that same connection 0x40[0x0a] answered the same 0x28 — consistent with a 0-100 percent, not a 0-4 level
+    4098: { label: "Niimbot B1 SE",  task: "b1", dpi: 203, paced: true,  bundle: false, batteryScale: "enum" },     // "enum" is the upstream default; not verified on this model
+    4608: { label: "Niimbot M2-H",   task: "b1", dpi: 300, paced: false, bundle: true,  batteryScale: "enum" },  // B1-Pro-class: b1 command sequence (per niimbluelib; v4 tested no better) + fast writes; batteryScale "enum" is the upstream default, not verified on this model
     // D11_H, discovered 2026-08-13 by open discovery (it advertises "D11_H-…", and
     // reports protocol 5). The v4 sequence PRINTS on it — solid black came out on the
     // first attempt — which is what the protocol doc predicted and nobody had tried.
     // `paced`/`bundle` are the conservative defaults: neither has been measured here.
-    528:  { label: "Niimbot D11_H", task: "v4", dpi: 300, paced: false, bundle: false },
+    528:  { label: "Niimbot D11_H", task: "v4", dpi: 300, paced: false, bundle: false, batteryScale: "enum" },     // "enum" is the upstream default; not verified on this model
     // D110, model id 2304, printed end to end on hardware 2026-08-14 (advertised name
     // "D110-FC06023035"). `task: "b1"` is MEASURED, not assumed. Driven as `v4` the
     // printer acked SetDensity (0x21→0x31), SetLabelType (0x23→0x33), PrintStart 9b
@@ -338,7 +343,7 @@
     // with an undocumented `0xdb 06`. Three SEPARATE jobs print all three, clean. This
     // is per-MODEL, not per-task — do not add the field to another b1-task model
     // without measuring it broken the same way.
-    2304: { label: "Niimbot D110",   task: "b1", dpi: 203, paced: true,  bundle: false, pagesPerJob: 1 },
+    2304: { label: "Niimbot D110",   task: "b1", dpi: 203, paced: true,  bundle: false, pagesPerJob: 1, batteryScale: "enum" },  // "enum" is the upstream default; not verified on this model
     // B2 Pro, model id 6912 (0x1B00), advertised name e.g. "B2 Pro-I304050285",
     // protocol 5. Printed end to end on hardware 2026-08-14.
     // `task: "v4"` is MEASURED: SetDensity (0x21→0x31), SetLabelType (0x23→0x33),
@@ -360,7 +365,7 @@
     // read this `false` as measured.
     // `bundle: false` is the conservative default, never measured — same standing as
     // the D11_H (528) entry.
-    6912: { label: "Niimbot B2 Pro", task: "v4", dpi: 300, paced: false, bundle: false },
+    6912: { label: "Niimbot B2 Pro", task: "v4", dpi: 300, paced: false, bundle: false, batteryScale: "percent" }, // from niimbluelib#28's upstream claim; NOT measured here
     // N1, model id 3586 (0x0E02), advertised name e.g. "N1-H324110115", firmware 4.07.
     // Printed end to end on hardware 2026-08-14.
     // `task: "b1"` is MEASURED, and measured the hard way. Driven as `v4` the printer
@@ -386,7 +391,7 @@
     // parked at `page 1 / 100 % / 100 %` until PAGE_WAIT_MS expired and the driver
     // threw. This is per-MODEL: it says nothing about any other b1-task model that has
     // not been run the same way.
-    3586: { label: "Niimbot N1",     task: "b1", dpi: 203, paced: true,  bundle: false, pagesPerJob: 1 },
+    3586: { label: "Niimbot N1",     task: "b1", dpi: 203, paced: true,  bundle: false, pagesPerJob: 1, batteryScale: "enum" },  // "enum" is the upstream default; not verified on this model
   };
   let printerInfo = null;   // { modelId, protocolVersion, label, task, dpi } after connect
 
@@ -796,6 +801,41 @@
     return { ready: reasons.length === 0, reasons, evidence: weakest };
   }
 
+  // REPORT the battery level, per model. Pure like readiness(): it reads a getStatus()
+  // result (plus the currently identified printer's `batteryScale`, see MODEL_IDS
+  // above) and calls nothing — it never connects, never blocks, never feeds a print
+  // path. The same heartbeat byte (idx2, `chargeLevel`) means two different things
+  // depending on the model, and conflating them is exactly how a wrong number gets
+  // shown: "percent" printers already send 0-100; "enum" printers send a 0-4 level
+  // (0=0%, 1=25%, 2=50%, 3=75%, 4=100%). A raw value outside its model's range is a
+  // CONTRADICTION, not a rounding job — it is reported as "unknown" rather than
+  // silently coerced into a plausible-looking number.
+  //   { raw, scale: "percent" | "enum" | "unknown", percent: number | null, text, evidence } | null
+  // `evidence` is exactly what getStatus() already marked for chargeLevel — this
+  // function invents no trust level of its own.
+  function battery(status) {
+    const dec = status && status.decoded;
+    const hb = dec && dec.heartbeat;
+    const raw = hb ? hb.chargeLevel : undefined;
+    if (raw == null) return null;
+    const evidence = (dec.evidence && dec.evidence.heartbeat && dec.evidence.heartbeat.chargeLevel) || null;
+    const meta = (printerInfo && printerInfo.modelId != null) ? MODEL_IDS[printerInfo.modelId] : null;
+    const baseScale = meta ? meta.batteryScale : null;
+    if (baseScale === "percent") {
+      if (raw > 100) return { raw, scale: "unknown", percent: null, text: `unknown (raw ${raw} on a 0-100 scale)`, evidence };
+      return { raw, scale: "percent", percent: raw, text: `${raw}%`, evidence };
+    }
+    if (baseScale === "enum") {
+      if (raw > 4) return { raw, scale: "unknown", percent: null, text: `unknown (raw ${raw} on a 0-4 scale)`, evidence };
+      const percent = raw * 25;
+      return { raw, scale: "enum", percent, text: `${percent}% (level ${raw} of 4)`, evidence };
+    }
+    // Printer unidentified (no MODEL_IDS match): the SCALE itself is unknown here, not
+    // just the value — the same byte reads as "%" on some models and "level 0-4" on
+    // others, so there is nothing to convert against.
+    return { raw, scale: "unknown", percent: null, text: `unknown (raw ${raw}, printer not identified)`, evidence };
+  }
+
   // ── Bitmap: image → rows packed MSB-first (1 = black) ───────────────────────
   async function imageToPacked(url, w, h, offsetY) {
     const dy = offsetY | 0;   // print-position calibration (paper registration, not scale — w/h stay put); dy > 0 shifts down, dy < 0 shifts up
@@ -1199,6 +1239,11 @@
     // Pure reporter over a getStatus() result — { ready, reasons, evidence }. NOT wired
     // into any print path, by design; call it yourself if your app wants to warn.
     readiness,
+    // Pure reporter over a getStatus() result — { raw, scale, percent, text, evidence }
+    // | null. Reads the byte per the CONNECTED model's batteryScale (MODEL_IDS); see
+    // the function above for what "percent" vs "enum" vs a contradiction means. NOT
+    // wired into any print path.
+    battery,
     connect, disconnect, printImage, printBatch,
   };
 })(typeof window !== "undefined" ? window : globalThis);

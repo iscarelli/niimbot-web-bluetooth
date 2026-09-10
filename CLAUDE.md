@@ -28,6 +28,7 @@ node test/label-memory.test.js  # barcode→record storage (no printer, no brows
 node test/label-size.test.js    # mm→px geometry (no printer, no browser)
 node test/one-page-per-job.test.js  # pagesPerJob split (D110, N1) + B1 Pro regression (no printer)
 node test/draw-fit.test.js      # demo label text shrinks to fit a narrow label (no printer, no browser)
+node test/battery.test.js       # battery() percent/enum/contradiction decode harness (no printer)
 ```
 
 The demo's inline `<script>` cannot be checked by `node --check`. To parse it, extract

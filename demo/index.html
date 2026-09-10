@@ -1037,10 +1037,17 @@
         // Say per field how much to trust it — a blanket label would be wrong in both
         // directions now that lid/paper are confirmed and chargeLevel still is not.
         const mark = (k) => (ev[k] === "observed" ? "" : ` (${ev[k] || "?"})`);
+        // battery() reads chargeLevel per the CONNECTED model's batteryScale — see
+        // src/niimbot.js. Show its text, not the raw byte: "40" alone doesn't say
+        // whether that's 40 % or a level-4-of-4 enum, and the two look identical here.
+        // Nothing shown when battery() returns null (no heartbeat decoded) — a missing
+        // line beats a fake "0".
+        const bat = Niimbot.battery(st);
+        const batteryPart = bat ? `, battery ${bat.text}${bat.evidence === "observed" ? "" : " (inferred)"}` : "";
         status(hb
           ? `status: lid ${hb.lidClosed ? "closed" : "open"}${mark("lidClosed")}, `
-            + `paper ${hb.paperInserted ? "in" : "out"}${mark("paperInserted")}, `
-            + `charge ${hb.chargeLevel}${mark("chargeLevel")}. See the log for the raw dump.`
+            + `paper ${hb.paperInserted ? "in" : "out"}${mark("paperInserted")}`
+            + `${batteryPart}. See the log for the raw dump.`
           : "status read — layout not recognised, raw bytes are in the log.");
         // Report the label memory, but do NOT auto-select here: this button is a
         // read, and moving the dropdown under a user who just chose a size would be
