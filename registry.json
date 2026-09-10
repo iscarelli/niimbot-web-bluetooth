@@ -186,7 +186,7 @@
       "dpi": 300
     },
     "T30x45_b1": {
-      "_note": "Cable flag 30×45+50 @ 203 dpi, B1. Geometry is DERIVED from the B1's own 8.0 px/mm scale (T50x30_b1: 30 mm -> 240 px) and has NOT been confirmed on paper — no label of this size has been printed on a B1. code is the same as the 300 dpi sibling T30x45 ('T30*45+50'); h_px covers the 45 mm flag only, same convention as T30x45. w_px 240 is well under the B1's 384 px head, so no clipping is expected.",
+      "_note": "Cable flag 30×45+50 @ 203 dpi, B1. Geometry is derived from the B1's own 8.0 px/mm scale (T50x30_b1: 30 mm -> 240 px), and was CONFIRMED on paper 2026-09-10: printed on a B1, no side clipping and correct registration in the paper direction. code is the same as the 300 dpi sibling T30x45 ('T30*45+50'); h_px covers the 45 mm flag only, same convention as T30x45. w_px 240 is well under the B1's 384 px head, so no clipping is expected. No offset_y_px on this entry: nothing to correct, not because it went unmeasured.",
       "label": "30 × 45 mm (cable flag, 203 dpi)",
       "code": "T30*45+50",
       "w_mm": 30,
@@ -197,7 +197,7 @@
       "dpi": 203
     },
     "T25x38_b1": {
-      "_note": "Cable flag 25×38+40 @ 203 dpi, B1. Geometry is DERIVED from the B1's own 8.0 px/mm scale (T50x30_b1: 30 mm -> 240 px) and has NOT been confirmed on paper — no label of this size has been printed on a B1. code is the same as the 300 dpi sibling T25x38 ('T25*38+40'); h_px covers the 38 mm flag only, same convention as T25x38. w_px 200 is well under the B1's 384 px head, so no clipping is expected.",
+      "_note": "Cable flag 25×38+40 @ 203 dpi, B1. Geometry is derived from the B1's own 8.0 px/mm scale (T50x30_b1: 30 mm -> 240 px), and was CONFIRMED on paper 2026-09-10: printed on a B1, no side clipping and correct registration in the paper direction. code is the same as the 300 dpi sibling T25x38 ('T25*38+40'); h_px covers the 38 mm flag only, same convention as T25x38. w_px 200 is well under the B1's 384 px head, so no clipping is expected. No offset_y_px on this entry: nothing to correct, not because it went unmeasured.",
       "label": "25 × 38 mm (cable flag, 203 dpi)",
       "code": "T25*38+40",
       "w_mm": 25,
