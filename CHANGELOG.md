@@ -6,6 +6,11 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 ### Added
+- **Hardware confirmation, 2026-09-10**: the status line after *Identify* and the
+  battery reading below it were seen working on three printers, a B1, a B1 Pro and a
+  D11_H. That confirms the line renders and is populated on those three; it does
+  **not** confirm the `"enum"` scale carried by every model but the B1 Pro, which
+  still rests on the upstream default.
 - **T-030 — show lid, paper and battery right after identify** (2026-09-10):
   the *Identify* button already read the printer's status to restore the
   remembered label size for the tag on the roll, then threw the reading away.
