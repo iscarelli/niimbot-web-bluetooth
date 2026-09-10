@@ -5,6 +5,15 @@ All notable changes to this project are documented here. The format is based on
 [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
+### Changed
+- **T-034 — Raise the PageEnd deadline, with the measurement behind it** (2026-09-10):
+  `PAGE_ACK_MS` goes from the unmeasured, inherited `3000` to **`10000`**, with margin over
+  the distribution measured on a D11_H (10 PageEnd acks in a 10-page batch, 2057–2684 ms;
+  see `docs/NOTES.md` and `docs/protocol-v4.md`) and over an earlier run that exceeded 3000
+  by ~70 ms and killed the job. Also: the log lines that claimed a page was "buffered
+  (PageEnd acked)" now say only `PageEnd acked` — "buffered" was never something the driver
+  could know.
+
 ### Added
 - **T-033 — expose the PageEnd timeout and log how long each ack took** (2026-09-10):
   `PAGE_ACK_MS` (default 3000, unchanged — that value is still unmeasured, only now

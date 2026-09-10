@@ -1400,3 +1400,31 @@ anyway: `offset_y_px` is the feed axis and there is no X equivalent.
 49.45 mm, leaving 0.55 mm of margin: still comfortably on a 50 mm label. So columns 576-583
 are not falling off the paper. They are past the printhead, which is what the staircase print
 showed directly and what T-023 fixes. Paper was never the constraint.
+
+## PageEnd ack takes 2 to 2.7 s on the D11_H, and printing starts only after it (2026-09-10)
+
+A 10-page batch on a **D11_H**, each page a 79-frame image, produced ten `PageEnd` (`0xE3` →
+`0xE4`) round trips. The ack time, in the order the pages sent:
+
+    2057  2080  2208  2337  2379  2532  2629  2635  2666  2684  (ms)
+
+All ten sit inside 2.0–2.7 s. A separate, earlier attempt on the same printer exceeded the
+inherited `PAGE_ACK_MS = 3000` default by ~70 ms on one page and the job was killed as
+unconfirmed. With `PAGE_ACK_MS` raised to 10000, the same kind of batch on this printer no
+longer hits the deadline.
+
+**The order is the finding, and it is not what you would guess.** The printed-page counter
+(`0xA3` → `0xB3`) stays at 0 % for the entire 2.0–2.7 s wait, then climbs 0 % → 100 % only
+**after** `0xE4` arrives, in about 1 second (per the timestamped log lines captured
+2026-09-10). So the ack comes first and the printing happens after — the 2 to 2.7 s delay is
+**not** the time the page takes to print.
+
+**What the printer is doing during those 2 to 2.7 seconds is not known.** Nothing here
+establishes a cause, and none is offered. The two candidates anyone would reach for —
+processing the uploaded image, or something in the paper path — are exactly the kind of
+guess this file's own rule (see *Lesson worth more than the fix*, above) warns against
+writing down without a measurement behind it. None was taken.
+
+**Not measured: every model other than the D11_H.** This batch is one printer, one label
+size (79 frames/page), one session. Whether the 2.0–2.7 s window, or even the ack-before-print
+order, holds on the B1, B1 Pro, M2-H, D110, N1 or B2 Pro is unknown.

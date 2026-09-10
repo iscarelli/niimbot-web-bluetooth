@@ -68,6 +68,13 @@ Responses arrive via NOTIFY in the same frame (`0x55 0x55 cmd len ... crc 0xAA 0
 consecutive rows (run-length, max 200). `stride = ceil(W / 8)` bytes per row,
 **MSB-first** (bit 0x80 = leftmost pixel; 1 = black).
 
+**`0xE3` → `0xE4` timing (D11_H, 2026-09-10):** across a 10-page batch, the ack took
+2.0–2.7 s per page (measured 2057–2684 ms; see `docs/NOTES.md`). The printed-page counter
+(`0xA3` → `0xB3`) does not move during that wait — it only starts advancing **after** `0xE4`
+arrives, so printing happens after the ack, not during it. A `0xD3` (an unsolicited
+row-received count — see `docs/NOTES.md`, *`0xD3` is a row-received counter*) is typically
+seen a few ms before `0xE4`. Not measured on any model other than the D11_H.
+
 ## Print flow (one label)
 
 ```
