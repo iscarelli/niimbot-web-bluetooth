@@ -26,6 +26,27 @@ label. (Web Bluetooth needs HTTPS — the live demo and `localhost` both qualify
        alt="Pairing a Niimbot printer and printing a label from the browser demo" width="640">
 </p>
 
+### Using it in your own page
+
+The demo is one caller, not the product. The driver is one file and this is all it
+takes to print from a page of your own:
+
+```html
+<script src="src/niimbot.js"></script>
+<script>
+  const model = { name_prefixes: ["B1"], task: "b1", density: 3, label_type: 1, speed: 1 };
+  const size  = { w_px: 384, h_px: 240, offset_y_px: 4 };   // T50x30 on the B1
+
+  // From a click, not on load: the browser only opens the Bluetooth chooser
+  // inside a user gesture.
+  document.querySelector("#print").onclick = () =>
+    Niimbot.printImage("/path/to/label.png", { model, size }).catch(console.error);
+</script>
+```
+
+`npm i niimbot-web-bluetooth`, or drop the one file in. **[Quick start](#quick-start)**
+has copies, batches and print density; **[API](#api)** has every call.
+
 ## Contents
 
 | Path | What it is | In the npm package |
