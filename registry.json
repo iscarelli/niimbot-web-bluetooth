@@ -140,6 +140,18 @@
       "margin": 6,
       "dpi": 300
     },
+    "T12x22": {
+      "_note": "D11_H 12×22 mm @ 300 dpi. The reference for scale is T15x30 itself (30 mm -> 354 px = 11.8 px/mm), so 22 mm -> 260 px and 12 mm -> 142 px. w_px 142 is the LABEL, not the head: the D11_H's head is 144 px (see T15x30's _note), and 142 fits inside it. offset_y_px -6 is MEASURED, not computed from the table: printed 2026-09-10 with offset 0, the artwork started after the label's start edge and ended right at the bottom limit; the maintainer asked for 0.5 mm earlier, and 0.5 mm x 11.8 px/mm = 5.9 -> 6 px upward (negative moves up, per the README API section, offsetY).",
+      "label": "12 × 22 mm (D11_H)",
+      "code": "T12*22",
+      "w_mm": 12,
+      "h_mm": 22,
+      "w_px": 142,
+      "h_px": 260,
+      "margin": 6,
+      "offset_y_px": -6,
+      "dpi": 300
+    },
     "T40x60": {
       "_note": "40×60 @ 300 dpi, B1 Pro. Registered 2026-08-14 from a roll fitted on the maintainer's printer (tag 6972842748560, printLimit 150 / capacity 125 — 1.2, the same ratio as every other roll measured here). Geometry is arithmetic: 40 mm × 11.81 = 472, 60 mm × 11.81 = 709, and 472 is well inside the B1 Pro's head so nothing is clamped. It printed and the printer confirmed the page; nobody has yet measured the printed area against the label with a rule. NOTE ON TIME, because this is the largest size that ships. Both figures measured on a Mac 2026-08-14, where the driver paces at 10 ms/write, same label two minutes apart: the demo's REALISTIC label sent 142 row-writes, 1.7 s of upload, 4.4 s end to end; its STRESS label (corner-to-corner diagonals, which touch nearly every row and defeat run-length) sent 589 — one per row — for 6.8 s of upload and 8.6 s end to end. 4.1× the writes, 4.1× the upload. Printing itself is ~2.3 s; do not compute it by subtracting the upload, because with a slow upload the printer starts mid-stream (it was already 36% printed when the stress upload finished), so whatever follows the upload is a remainder, not the cost.",
       "label": "40 × 60 mm",

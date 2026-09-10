@@ -5,6 +5,14 @@ All notable changes to this project are documented here. The format is based on
 [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
+### Added
+- **T-026 — ship the D11 12×22 mm label size** (`registry.json`): added `T12x22`
+  (12 × 22 mm, D11_H, `code` "T12*22", 300 dpi, 142 × 260 px, `offset_y_px` -6), a size
+  measured on paper 2026-09-10 that previously existed only in the demo's Rolls panel,
+  which saves to the browser of whoever typed it and does not travel to anyone else.
+  Scale follows `T15x30` (30 mm -> 354 px = 11.8 px/mm); `offset_y_px` -6 is measured,
+  not computed, correcting a registration offset observed on the printed label.
+
 ### Fixed
 - **T-025 — tell "no Web Bluetooth" apart from "insecure context"**: `connect()`'s
   `!navigator.bluetooth` check (`src/niimbot.js`) and the demo's matching warning

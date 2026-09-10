@@ -10,37 +10,6 @@ and hardware confirmation is the maintainer's separate step.
 
 ## Active
 
-## [ ] T-026  Ship the D11 12x22 mm label size
-Why:     medido no papel hoje (10/09/2026) na D11_H; hoje só existe pelo painel Rolls,
-         que grava no navegador de quem digitou e não viaja para ninguém.
-Vikunja: 1531
-Files:   registry.json
-Do:      acrescente uma entrada `T12x22` em `sizes`, ao lado de `T15x30` (a outra
-         medida da D11_H), com exatamente estes valores:
-           code:        "T12*22"
-           label:       "12 × 22 mm (D11_H)"
-           dpi:         300
-           w_mm:        12
-           h_mm:        22
-           w_px:        142
-           h_px:        260
-           margin:      6
-           offset_y_px: -6
-         E um `_note` dizendo, sem inventar nada além disto:
-           - 12 × 22 mm a 300 dpi. A referência de escala é a própria `T15x30`
-             (30 mm → 354 px = 11,8 px/mm), então 22 mm → 260 px e 12 mm → 142 px.
-           - w_px 142 é a etiqueta, não a cabeça: a cabeça da D11_H tem 144 px
-             (ver o `_note` da `T15x30`), e 142 cabe dentro dela.
-           - offset_y_px −6 é MEDIDO, não calculado de tabela: impresso em
-             2026-09-10 com offset 0, a arte começou depois do início da etiqueta e
-             terminou no limite de baixo; o dono pediu 0,5 mm antes, e
-             0,5 mm × 11,8 px/mm = 5,9 → 6 px para cima (negativo sobe, conforme o
-             README, seção API, `offsetY`).
-         Não mexa em nenhuma outra entrada e não bump de versão.
-         Registre a mudança em `CHANGELOG.md` sob `## [Unreleased]`, no mesmo commit.
-Verify:  python -c "import json,io; d=json.load(io.open('registry.json',encoding='utf-8')); s=d['sizes']['T12x22']; assert (s['code'],s['dpi'],s['w_px'],s['h_px'],s['offset_y_px'])==('T12*22',300,142,260,-6), s; print('ok')"
-         node --check src/niimbot.js
-
 ## [ ] T-027  Ship the two cable-flag sizes at 203 dpi
 Why:     prometido em público na thread do r/selfhosted hoje: num B1 (203 dpi) o
          seletor só oferece uma medida, porque as duas cable flag que existem são
