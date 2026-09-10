@@ -6,7 +6,7 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 ### Added
-- **Hardware confirmation, 2026-09-10**: the status line after *Identify* and the
+- **Hardware confirmation, 2026-09-10** (recorded by T-031): the status line after *Identify* and the
   battery reading below it were seen working on three printers, a B1, a B1 Pro and a
   D11_H. That confirms the line renders and is populated on those three; it does
   **not** confirm the `"enum"` scale carried by every model but the B1 Pro, which
