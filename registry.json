@@ -141,7 +141,7 @@
       "dpi": 300
     },
     "T12x22": {
-      "_note": "D11_H 12×22 mm @ 300 dpi. The reference for scale is T15x30 itself (30 mm -> 354 px = 11.8 px/mm), so 22 mm -> 260 px and 12 mm -> 142 px. w_px 142 is the LABEL, not the head: the D11_H's head is 144 px (see T15x30's _note), and 142 fits inside it. offset_y_px -6 is MEASURED, not computed from the table: printed 2026-09-10 with offset 0, the artwork started after the label's start edge and ended right at the bottom limit; the maintainer asked for 0.5 mm earlier, and 0.5 mm x 11.8 px/mm = 5.9 -> 6 px upward (negative moves up, per the README API section, offsetY).",
+      "_note": "D11_H 12×22 mm @ 300 dpi. The reference for scale is T15x30 itself (30 mm -> 354 px = 11.8 px/mm), so 22 mm -> 260 px and 12 mm -> 142 px. w_px 142 is the LABEL, not the head: the D11_H's head is 144 px (see T15x30's _note), and 142 fits inside it. offset_y_px -6 is MEASURED, not computed from the table: printed 2026-09-10 with offset 0, the artwork started after the label's start edge and ended right at the bottom limit; the maintainer asked for 0.5 mm earlier, and 0.5 mm x 11.8 px/mm = 5.9 -> 6 px upward (negative moves up, per the README API section, offsetY). That -6 was itself DERIVED from the offset-0 print, not seen printed; the correction has since been printed with -6 applied, on a D11_H, 2026-09-10, and came out registered correctly — offset CONFIRMED on paper 2026-09-10.",
       "label": "12 × 22 mm (D11_H)",
       "code": "T12*22",
       "w_mm": 12,
