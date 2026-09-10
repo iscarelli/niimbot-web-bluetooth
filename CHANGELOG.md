@@ -4,7 +4,7 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/), and this project adheres to
 [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [2.5.0] - 2026-09-10
 ### Added
 - **Hardware confirmation, 2026-09-10** (recorded by T-031): the status line after *Identify* and the
   battery reading below it were seen working on three printers, a B1, a B1 Pro and a
