@@ -1428,3 +1428,35 @@ writing down without a measurement behind it. None was taken.
 **Not measured: every model other than the D11_H.** This batch is one printer, one label
 size (79 frames/page), one session. Whether the 2.0–2.7 s window, or even the ack-before-print
 order, holds on the B1, B1 Pro, M2-H, D110, N1 or B2 Pro is unknown.
+
+## `PAGE_PIPELINE`: the interrupter, not the result (2026-09-10)
+
+The measurement above (D11_H, 2.0–2.7 s per `PageEnd` ack, ack-before-print) explains why the
+same D11_H stops and visibly dries between labels in a multi-page batch: `printBatch`'s
+single-job loop does not send page *i+1* until page *i*'s `0xE4` has come back, so the whole
+2.0–2.7 s window is dead air with nothing on the wire.
+
+Two more observations from the same session say the printer itself is not the reason for that
+stop:
+
+- **No retraction happens between labels.** If the pause were the printer treating each
+  `PageEnd` as the end of a job, the paper would retract and re-feed — it does not.
+- **The official NIIMBOT app prints four DIFFERENT labels emended together**, back to back, no
+  visible gap. And this driver's own `copies:4` path (`printImage`, one upload, one `PageEnd`,
+  the printer repeats the page internally) also comes out continuous on the same hardware. Both
+  say the printhead can feed continuously; what stops it here is the driver waiting.
+
+**T-036 adds the interrupter, not the fix.** `Niimbot.PAGE_PIPELINE` (default `false`) makes
+`printBatch`'s single-job loop send the next page's data without waiting for the current page's
+`PageEnd` ack first, collecting every ack and covering all of them before `PrintEnd` — same
+unconfirmed-job guarantee as the non-pipelined path (see `src/niimbot.js`, `sendPagePacked` /
+`sendPageEndAsync` / the `PAGE_PIPELINE` branch in `printBatch`).
+
+**What this task does NOT establish: whether the printer actually accepts the next page while
+the previous one's ack is still outstanding.** Nobody has run this on paper. It might work
+cleanly, might silently corrupt or drop a page, or might answer with the same `0xdb`-style
+refusal the D110 gives an out-of-turn command (see *D110: every multi-label path fails*,
+above) — on a different model, but the same *class* of failure. That is exactly why the flag
+defaults off and is documented as a diagnostic, not a setting: this driver's history is silent
+short prints (v1.3.3, v1.3.4, and the 2026-08-13 4-of-5 batch), so an unmeasured "send ahead"
+behaviour gets a flag and a log line, not a default.

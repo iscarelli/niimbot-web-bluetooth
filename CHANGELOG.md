@@ -5,6 +5,24 @@ All notable changes to this project are documented here. The format is based on
 [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
+### Added
+- **T-036 — Pipeline the next page while the previous ack is in flight** (2026-09-10):
+  `Niimbot.PAGE_PIPELINE` (boolean, default `false`) is a new DIAGNOSTIC knob for
+  `printBatch`'s single-job streaming loop. Off, the loop is byte-for-byte what it was
+  before. On, it sends the next page's data without waiting for the current page's
+  `PageEnd` (0xE3→0xE4) ack first — motivated by a D11_H measurement (docs/NOTES.md)
+  where that ack alone costs 2.0–2.7 s per page and the printer visibly stops and dries
+  between labels with no retraction, while the official app prints 4 different labels
+  emended together and this driver's own `copies:4` also comes out continuous. Every
+  page's ack is still collected and covered in full before `PrintEnd`, so the
+  unconfirmed-job guarantee holds exactly as before: any page whose ack never comes back
+  still ends the job as unconfirmed, `PrintEnd` sent first, throw after. The flag stays
+  off by default because nobody has confirmed on paper that the printer accepts the next
+  page while the previous ack is outstanding. Covered by a throwaway harness (not
+  committed to `test/`); the required suites (`test/dispatch.test.js`,
+  `test/unconfirmed.test.js`, `test/one-page-per-job.test.js`, `test/pacing.test.js`) all
+  still pass unchanged, since the flag defaults off.
+
 ### Changed
 - **T-035 — Let the driver wait for more than one response at a time** (2026-09-10):
   the notification dispatcher's single `pending` slot is now `pendingQueue`, a queue of

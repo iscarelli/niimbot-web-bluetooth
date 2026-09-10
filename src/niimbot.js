@@ -987,7 +987,15 @@
   // next page can be sent while this one is still printing. That keeps the printer
   // buffer primed when the send can keep up; in "paced" on dense pages it cannot (see
   // the header block), and the printer idles between labels waiting for data.
-  async function sendPagePacked(model, size, buf, stride, copies, onProgress, tag) {
+  //
+  // `deferAck`, used only by printBatch's PAGE_PIPELINE path: when true, PageEnd
+  // (0xE3) is still sent here, but its ack (0xE4) is NOT awaited — the function
+  // returns as soon as the write goes out, wrapped as `{ ackPromise }` (an OBJECT,
+  // not the promise itself: an async function that RETURNED a bare Promise would have
+  // its own promise adopt it, and `await sendPagePacked(...)` would then block on the
+  // ack anyway, silently undoing the deferral). The caller awaits `ackPromise` later,
+  // once every page has been sent — see sendPageEndAsync below.
+  async function sendPagePacked(model, size, buf, stride, copies, onProgress, tag, deferAck) {
     const W = size.w_px, H = size.h_px;
     const c = Math.max(1, copies | 0);   // printer repeats this page `c` times from one upload
     if (isB1(model)) {
@@ -1005,9 +1013,28 @@
 
     onProgress && onProgress("sending image…");
     await sendImage(buf, H, stride);                                         // shared total-mode 0x84/0x85 encoder
+
+    if (deferAck) return { ackPromise: sendPageEndAsync(tag) };
+
     // RETURN whether PageEnd was acknowledged. Discarding this is how a page that the
     // printer never confirmed still got logged as buffered and acked, directly under the
     // ⚠ warning saying it had not been.
+    const ackT0 = Date.now();
+    const pageEnd = await sendWait(0xe3, [0x01], 0xe4, PAGE_ACK_MS);          // PageEnd (0xE3)
+    const ackMs = Date.now() - ackT0;
+    const prefix = tag ? `${tag}: ` : "";
+    tlog(pageEnd != null
+      ? `${prefix}PageEnd acked in ${ackMs} ms`
+      : `${prefix}PageEnd UNACKED after ${ackMs} ms (PAGE_ACK_MS)`);
+    return pageEnd != null;
+  }
+
+  // PAGE_PIPELINE only: fire PageEnd (0xE3) and register its wait, but do not block
+  // on the reply — return a promise that resolves once the ack arrives or PAGE_ACK_MS
+  // expires, so the caller can send the NEXT page's data first. Same logging and same
+  // true/false result as the inline wait in sendPagePacked above; only the point where
+  // the caller awaits it moves.
+  async function sendPageEndAsync(tag) {
     const ackT0 = Date.now();
     const pageEnd = await sendWait(0xe3, [0x01], 0xe4, PAGE_ACK_MS);          // PageEnd (0xE3)
     const ackMs = Date.now() - ackT0;
@@ -1028,6 +1055,23 @@
   // the job. Erring high only costs waiting longer before declaring a page the printer is
   // never going to confirm.
   let PAGE_ACK_MS = 10000;
+
+  // DIAGNOSTIC, under measurement — default OFF. When true, printBatch's single-job
+  // streaming loop sends the next page's data WITHOUT waiting for the current page's
+  // PageEnd ack (0xE4) first; every ack is instead collected and awaited before
+  // PrintEnd (see the PAGE_PIPELINE branch in printBatch). Motivated by a D11_H
+  // measurement (docs/NOTES.md, 2026-09-10): the PageEnd ack alone costs 2.0-2.7 s per
+  // page, the driver sends nothing during that wait, and the printer visibly stops and
+  // dries between labels — no retraction, so it is not the "job over" pause. The
+  // official app prints 4 DIFFERENT labels emended together, and this driver's own
+  // `copies:4` (one upload, no per-page PageEnd in between) also comes out continuous,
+  // which is evidence the hardware is not what is imposing the stop.
+  // It stays a diagnostic and not a setting because nobody has yet confirmed on paper
+  // that the printer accepts the next page while the previous page's ack is still
+  // outstanding — it might silently drop or corrupt it instead. The guarantee that
+  // must hold either way: any page whose ack never comes back still ends the job as
+  // unconfirmed, PrintEnd sent first, throw after — same as with the flag off.
+  let PAGE_PIPELINE = false;
 
   // How long to wait for the printed-page counter to reach a target before giving up.
   // Exposed because a test cannot afford to sit through the real value, and because an
@@ -1189,6 +1233,59 @@
       return;
     }
 
+    // PAGE_PIPELINE (diagnostic, default off — see its declaration above): the same
+    // single job, the same page order, the same LOOKAHEAD throttle on the printer's
+    // OWN page counter — the only difference is that PageEnd's ack (0xE4) is not
+    // awaited per page. Every page's ack is collected instead and covered in full
+    // before PrintEnd, so the guarantee holds exactly as below: any page whose ack
+    // never came back still ends the job as unconfirmed, PrintEnd sent first, throw
+    // after. With the flag off, execution never reaches this branch.
+    if (PAGE_PIPELINE) {
+      await beginJob(model, N, onProgress, density);
+      tlog(`job started (${N} pages) [PAGE_PIPELINE]`);
+      let problem = null;
+      const acks = []; // { i, ackPromise } for every page's deferred PageEnd ack, in send order
+      for (let i = 0; i < N && !problem; i++) {
+        const tag = `label ${i + 1}/${N}`;
+        onProgress && onProgress(`${tag}: sending…`);
+        const { buf, stride } = await imageToPacked(urls[i], size.w_px, size.h_px, offsetY);
+        tlog(`page ${i}: start sending`);
+        const { ackPromise } = await sendPagePacked(model, size, buf, stride, 1,
+          (s) => onProgress && onProgress(`${tag}: ${s}`), tag, true);
+        acks.push({ i, ackPromise });
+        // Same look-ahead throttle as the non-pipelined path, on the printer's OWN
+        // page counter (0xA3→0xB3) — unrelated to whether THIS page's PageEnd ack has
+        // arrived, so it is untouched by the deferral above.
+        if (i - LOOKAHEAD >= 0) {
+          const want = i - LOOKAHEAD + 1;
+          if (!await waitPage(want, (s) => onProgress && onProgress(`${tag}: ${s}`))) {
+            problem = `printer counter stalled at page ${_pageSeen == null ? "?" : _pageSeen} of ${want} while streaming (${PAGE_WAIT_MS}ms)`;
+          }
+        }
+      }
+      // Cover every outstanding PageEnd ack before PrintEnd — the one guarantee this
+      // flag must never break. Every promise is awaited even after the first failure,
+      // so nothing is left registered in the notification dispatcher's waiter queue
+      // when PrintEnd goes out.
+      for (const { i, ackPromise } of acks) {
+        const acked = await ackPromise;
+        if (!problem && !acked) {
+          problem = `page ${i + 1} of ${N} was never acknowledged after ${PAGE_ACK_MS}ms (no PageEnd ack)`;
+        }
+      }
+      if (!problem && !await waitPage(N, onProgress)) {                     // drain remaining pages
+        problem = `printer counter stopped at page ${_pageSeen == null ? "?" : _pageSeen} of ${N} after ${PAGE_WAIT_MS}ms`;
+      }
+      // PrintEnd goes out either way — it is what feeds out and retracts the paper.
+      // The throw comes after, never instead. (See finishJob for the same ordering.)
+      tlog(problem ? `job UNCONFIRMED (${problem}); sending PrintEnd anyway` : `all ${N} pages printed; sending PrintEnd`);
+      await endJob();
+      if (problem) throw unconfirmed(problem);
+      tlog(`PrintEnd acked (batch done); total ${Date.now() - _t0} ms [PAGE_PIPELINE]`);
+      onProgress && onProgress("ok");
+      return;
+    }
+
     // Single job for the whole batch (both tasks): pages stream back-to-back, no
     // retract between. The B1 (protocol 3) supports this natively — printStart7b
     // with totalPages>1 parks the paper at the printhead after each PageEnd and only
@@ -1239,6 +1336,10 @@
     get PAGE_ACK_MS() { return PAGE_ACK_MS; }, set PAGE_ACK_MS(v) { PAGE_ACK_MS = Math.max(1, v | 0); },
     // How long to wait for the printed-page counter before declaring a job unconfirmed.
     get PAGE_WAIT_MS() { return PAGE_WAIT_MS; }, set PAGE_WAIT_MS(v) { PAGE_WAIT_MS = Math.max(1, v | 0); },
+    // DIAGNOSTIC, default false — see the PAGE_PIPELINE declaration for what it does
+    // and why it is not a setting yet. Streams the next page's data before the
+    // current page's PageEnd ack has come back, in printBatch's single-job loop only.
+    get PAGE_PIPELINE() { return PAGE_PIPELINE; }, set PAGE_PIPELINE(v) { PAGE_PIPELINE = !!v; },
     // Override the DETECTED write path: null (auto) | "fast" | "paced" | "acked".
     // Applied at write time, so it can be flipped mid-connection; anything else throws
     // rather than being ignored. See the "Write-mode override" block above.
