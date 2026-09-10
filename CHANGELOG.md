@@ -6,6 +6,18 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 ### Added
+- **T-030 — show lid, paper and battery right after identify** (2026-09-10):
+  the *Identify* button already read the printer's status to restore the
+  remembered label size for the tag on the roll, then threw the reading away.
+  It now keeps that reading and appends the same lid/paper/battery phrase the
+  *Read status* button shows (with its per-field evidence marks and the
+  battery "(inferred)" note) to the identification message — without a second
+  status read. `demo/index.html` gets a new pure helper, `statusSummary(st)`,
+  extracted from the *Read status* handler and used by both handlers so the
+  phrase can't diverge between them; it returns `null` when the heartbeat
+  wasn't decoded, and the caller decides what to show. If the status read
+  fails, the identification message stays up and the failure is only logged —
+  the existing fault isolation was preserved, not changed.
 - **T-029 — report the battery level, per model**: the same heartbeat byte
   (`chargeLevel`) is a 0-100 percent on some printers and a 0-4 level on others, and
   niimbluelib#28 (2026-09-10) is what first told the two apart. `MODEL_IDS`
