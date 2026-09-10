@@ -90,8 +90,29 @@
   // Connection reused across prints (module singleton).
   let device = null;
   let characteristic = null;
-  let pending = null;        // { cmd, resolve } awaiting a response
+  // Waiters registered by sendWait()/getPrintStatus(), in registration order. Each
+  // entry is { cmd, resolve } — `cmd === null` means "any opcode" (the handshake's
+  // PrinterInfo reads use that, since the response code varies by sub-command). A
+  // notification resolves the FIRST entry whose cmd matches (or the first `null`
+  // entry), so two waiters for different opcodes can be outstanding at once and each
+  // gets its own reply; two waiters for the SAME opcode resolve in the order they
+  // were registered. Nothing registers more than one waiter at a time yet — no print
+  // path sends in parallel — so today this behaves exactly like the single slot it
+  // replaced; the capacity is unused until a caller needs it.
+  let pendingQueue = [];
   let lastUnsolicited = null; // last unsolicited response (e.g. status during the poll)
+
+  // Register a waiter and return a token to clear it (on timeout) without disturbing
+  // any other waiter in the queue.
+  function registerWait(cmd, resolve) {
+    const entry = { cmd, resolve };
+    pendingQueue.push(entry);
+    return entry;
+  }
+  function clearWait(entry) {
+    const idx = pendingQueue.indexOf(entry);
+    if (idx >= 0) pendingQueue.splice(idx, 1);
+  }
 
   // ── Frame V4: [0x55,0x55,cmd,len,...data,crc,0xAA,0xAA], crc = cmd^len^data ──
   function pack(cmd, data) {
@@ -114,9 +135,10 @@
     const data = [];
     for (let i = 0; i < len && 4 + i < v.byteLength; i++) data.push(v.getUint8(4 + i));
     logRx(cmd, data);
-    if (pending && (pending.cmd === cmd || pending.cmd === null)) {
-      const p = pending; pending = null;
-      p.resolve({ cmd, data });
+    const idx = pendingQueue.findIndex((w) => w.cmd === cmd || w.cmd === null);
+    if (idx >= 0) {
+      const [w] = pendingQueue.splice(idx, 1);
+      w.resolve({ cmd, data });
     } else {
       lastUnsolicited = { cmd, data };
     }
@@ -264,20 +286,22 @@
   }
 
   async function sendWait(cmd, data, wantResp, timeoutMs) {
-    const wait = new Promise((resolve) => { pending = { cmd: wantResp, resolve }; });
+    let entry;
+    const wait = new Promise((resolve) => { entry = registerWait(wantResp, resolve); });
     await send(cmd, data);
     const res = await Promise.race([wait, sleep(timeoutMs).then(() => null)]);
-    if (pending && pending.cmd === wantResp) pending = null; // clear on timeout
+    if (!res) clearWait(entry); // clear on timeout; a late reply still finds nothing to match
     if (!res) logMsg(`⚠ no response to ${h2(cmd)} (wanted ${wantResp == null ? "any" : h2(wantResp)}) after ${timeoutMs}ms`);
     return res; // { cmd, data } or null
   }
 
   async function getPrintStatus(timeoutMs) {
     lastUnsolicited = null;
-    const wait = new Promise((resolve) => { pending = { cmd: 0xb3, resolve }; });
+    let entry;
+    const wait = new Promise((resolve) => { entry = registerWait(0xb3, resolve); });
     await send(0xa3, [0x01]);
     const res = await Promise.race([wait, sleep(timeoutMs).then(() => null)]);
-    if (pending && pending.cmd === 0xb3) pending = null;
+    if (!res) clearWait(entry);
     const r = res || (lastUnsolicited && lastUnsolicited.cmd === 0xb3 ? lastUnsolicited : null);
     if (!r || r.data.length < 4) return null;
     return { page: (r.data[0] << 8) | r.data[1], print: r.data[2], feed: r.data[3] };
@@ -518,7 +542,7 @@
   async function disconnect() {
     try { if (device && device.gatt && device.gatt.connected) device.gatt.disconnect(); }
     catch (e) { /* already gone */ }
-    characteristic = null; device = null; pending = null; lastUnsolicited = null; printerInfo = null;
+    characteristic = null; device = null; pendingQueue = []; lastUnsolicited = null; printerInfo = null;
     logMsg("disconnected");
   }
 
@@ -554,7 +578,7 @@
   //   "inferred"     not confirmed here. Covers both niimbluelib's transcribed names and
   //                  a reading the captures support but do not prove (`printLimit`).
   // `raw` remains the contract: the exact response bytes, the only part that cannot be
-  // wrong. Not for use mid-print: it shares the single `pending` slot with the print path.
+  // wrong. Not for use mid-print: it shares the response waiter queue with the print path.
   //
   // DELIBERATELY NOT DECODED, and each for a reason found in those captures:
   //   idx1  1.4.0 did not decode it; a later reading of its low nibble as an error code
@@ -1230,6 +1254,17 @@
     set FORCE_PACING(v) { setWriteOverride(v ? "paced" : null); },
     get printer() { return printerInfo; },   // { modelId, protocolVersion, label, task, dpi } after connect
     isSupported: () => !!navigator.bluetooth,
+    // NOT PUBLISHED API — reaches the notification dispatcher (pendingQueue,
+    // registerWait/clearWait, onNotify) directly for test/dispatch.test.js. Every real
+    // caller today (sendWait, getPrintStatus) awaits one waiter before registering the
+    // next, so nothing in normal use ever has two waiters outstanding at once — there is
+    // no public entry point that can drive the queue concurrently to exercise it. May
+    // change or disappear without notice; do not build application code on it.
+    _dispatch: {
+      registerWait, clearWait, onNotify,
+      get pendingQueue() { return pendingQueue; },
+      get lastUnsolicited() { return lastUnsolicited; },
+    },
     // ── DIAGNOSTIC, not API ────────────────────────────────────────────────────
     // Send one command and return whatever comes back, accepting ANY response opcode:
     //   await Niimbot.probe(0x1a, [0x02])   → { cmd, data } | null

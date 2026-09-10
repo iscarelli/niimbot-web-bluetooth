@@ -6,6 +6,16 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 ### Changed
+- **T-035 — Let the driver wait for more than one response at a time** (2026-09-10):
+  the notification dispatcher's single `pending` slot is now `pendingQueue`, a queue of
+  `{ cmd, resolve }` waiters — a notification resolves the first queued entry whose
+  `cmd` matches (or the first "any opcode" entry, as the handshake already relied on),
+  removing only that entry, and a timeout clears only its own entry instead of the
+  whole slot. This is a refactor with **no behaviour change**: nothing sends in
+  parallel yet, so every caller still registers, awaits, and clears one waiter before
+  the next exists — the queue's extra capacity is unused until a caller needs it (see
+  T-036). Covered by the new `test/dispatch.test.js`.
+
 - **T-034 — Raise the PageEnd deadline, with the measurement behind it** (2026-09-10):
   `PAGE_ACK_MS` goes from the unmeasured, inherited `3000` to **`10000`**, with margin over
   the distribution measured on a D11_H (10 PageEnd acks in a 10-page batch, 2057–2684 ms;

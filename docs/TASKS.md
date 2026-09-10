@@ -10,41 +10,6 @@ and hardware confirmation is the maintainer's separate step.
 
 ## Active
 
-## [ ] T-035  Let the driver wait for more than one response at a time
-Why:     `pending` é um slot único: enquanto um `sendWait` espera um opcode, a resposta
-         de qualquer outro comando cai em `lastUnsolicited` e um segundo `sendWait`
-         sobrescreve o primeiro. Isso impede mandar a próxima página antes do ack da
-         anterior, que é o que faz a impressora parar entre etiquetas (medido na D11_H
-         em 2026-09-10: sem retração, só espera).
-Files:   src/niimbot.js, test/dispatch.test.js, CLAUDE.md, CHANGELOG.md
-Vikunja: 1541
-Do:      1. Troque o `pending` único por uma **fila de esperas**: cada `sendWait`
-            registra `{ cmd, resolve }` e o dispatcher de notificação entrega a
-            resposta ao PRIMEIRO registro cujo `cmd` casa (ou a qualquer um, quando o
-            registro pediu "qualquer opcode", como o handshake já faz hoje), removendo
-            só esse registro.
-            Preserve exatamente o comportamento atual quando há uma espera só —
-            inclusive `lastUnsolicited`, de que o `getPrintStatus` depende, e a
-            limpeza no timeout.
-         2. **Isto é refactor, não mudança de comportamento.** Nenhum caminho de
-            impressão passa a mandar nada em paralelo nesta tarefa; a fila fica com
-            capacidade ociosa. Se algum teste existente mudar de resultado, pare e
-            relate em vez de ajustar o teste.
-         3. Novo `test/dispatch.test.js`, no molde dos outros harnesses, cobrindo:
-            duas esperas simultâneas de opcodes diferentes resolvidas fora de ordem;
-            uma espera que estoura o timeout sem derrubar a outra; resposta sem espera
-            registrada continuar caindo em `lastUnsolicited`; e duas esperas do MESMO
-            opcode sendo resolvidas na ordem em que foram registradas.
-         4. Acrescente `node test/dispatch.test.js` à lista de Verify do `CLAUDE.md`.
-         5. `CHANGELOG.md` sob `## [Unreleased]`. Sem bump de versão.
-Verify:  node --check src/niimbot.js
-         node test/dispatch.test.js
-         node test/unconfirmed.test.js
-         node test/status.test.js
-         node test/one-page-per-job.test.js
-         node test/pacing.test.js
-         node test/battery.test.js
-
 ## [ ] T-036  Pipeline the next page while the previous ack is in flight
 Why:     na D11_H o ack do PageEnd custa 2,0 a 2,7 s e o driver só manda a página
          seguinte depois dele, então a impressora imprime, seca e para — medido em
