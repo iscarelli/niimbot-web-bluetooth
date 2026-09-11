@@ -261,6 +261,17 @@
   // Single 61 B frames already work, so the MTU is ≥ ~64; 240 is safe for MTU ≥ 247.
   let BUNDLE_MAX = 240;
   let _bundleAllowed = false;   // set per connected model (see MODEL_IDS `bundle`)
+  // Bundle override: an escape hatch to TEST bundling on a model that has not been
+  // validated for it (see T-037 — the D11_H sends one frame per write and a 208-frame
+  // page cuts short on paper, and there is no way to try bundling there today). null
+  // (default) means "use the per-model default"; true/false forces it. DIAGNOSTIC: the
+  // per-model default in MODEL_IDS keeps deciding for real use, and bundling is only
+  // validated on the B1 and M2-H. Not reset at connect — same as writeOverride, so a
+  // tester can fix it before connecting and have it survive.
+  let bundleOverride = null;
+  function effectiveBundle() {
+    return bundleOverride === null ? _bundleAllowed : bundleOverride;
+  }
   let _bundle = [];      // pending raw frames awaiting a flush
   let _bundleLen = 0;
   async function flushBundle() {
@@ -280,7 +291,7 @@
   async function sendBundled(cmd, data) {
     logTx(cmd, data);
     const frame = pack(cmd, data);
-    const max = _bundleAllowed ? BUNDLE_MAX : 0;   // 0 → one frame per write (B1 Pro, unknown models)
+    const max = effectiveBundle() ? BUNDLE_MAX : 0;   // 0 → one frame per write (B1 Pro, unknown models)
     if (_bundleLen && _bundleLen + frame.length > Math.max(max, frame.length)) await flushBundle();
     _bundle.push(frame); _bundleLen += frame.length;
   }
@@ -532,7 +543,7 @@
     // NOT DEBUG-gated: `effective=` is the answer to "which write path did this print
     // take?", and the previous wrong conclusion about iOS was reached precisely because
     // nobody could see it. One line per connect.
-    logAlways(`writeMode=${writeMode} override=${writeOverride || "auto"} effective=${effectiveWriteMode()} forcePacing=${writeOverride === "paced"} bundle=${_bundleAllowed} mac=${IS_MAC} [${MAC_SOURCE}] pace=${PACE_MS} (task=${task || "?"}, model=${(meta && meta.label) || "?"}, write=${!!props.write}, writeNoResp=${!!props.writeWithoutResponse})`);
+    logAlways(`writeMode=${writeMode} override=${writeOverride || "auto"} effective=${effectiveWriteMode()} forcePacing=${writeOverride === "paced"} bundle=${effectiveBundle()} (detected=${_bundleAllowed}) mac=${IS_MAC} [${MAC_SOURCE}] pace=${PACE_MS} (task=${task || "?"}, model=${(meta && meta.label) || "?"}, write=${!!props.write}, writeNoResp=${!!props.writeWithoutResponse})`);
     warnOverrideVsModel();   // now that the model is identified, an override that fights it is worth saying
     if (task === "b1") await b1Handshake();
   }
@@ -1330,6 +1341,22 @@
     VERSION, SVC_UUID, CHAR_UUID,
     get DEBUG() { return DEBUG; }, set DEBUG(v) { DEBUG = !!v; },
     get BUNDLE_MAX() { return BUNDLE_MAX; }, set BUNDLE_MAX(v) { BUNDLE_MAX = Math.max(0, v | 0); },
+    // Override the per-model bundling decision: null (auto, the default) | true | false.
+    // DIAGNOSTIC — see the bundleOverride declaration above. Anything else throws rather
+    // than being silently ignored.
+    get BUNDLE() { return bundleOverride; },
+    set BUNDLE(v) {
+      if (v !== null && v !== true && v !== false) {
+        throw new TypeError(`Niimbot.BUNDLE must be null, true, or false — got ${JSON.stringify(v)}.`);
+      }
+      bundleOverride = v;
+      logAlways(`BUNDLE override = ${v === null ? "auto" : v} → effective=${effectiveBundle()} (detected=${_bundleAllowed})`);
+    },
+    // What the driver DETECTED for the connected model, and what sendBundled is
+    // actually using now — the pair a tester needs to tell "the override took effect"
+    // from "it was already that". Same pairing as DETECTED_WRITE_MODE/EFFECTIVE_WRITE_MODE.
+    get DETECTED_BUNDLE() { return _bundleAllowed; },
+    get EFFECTIVE_BUNDLE() { return effectiveBundle(); },
     get PACE_MS() { return PACE_MS; }, set PACE_MS(v) { PACE_MS = Math.max(0, v | 0); },
     // How long to wait for ONE page's PageEnd ack — NOT PAGE_WAIT_MS below, which is the
     // whole job's printed-page counter deadline. See sendPagePacked's comment.
