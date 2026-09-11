@@ -102,6 +102,20 @@
   let pendingQueue = [];
   let lastUnsolicited = null; // last unsolicited response (e.g. status during the poll)
 
+  // Row-received counter (0xD3), unsolicited: the printer volunteers it during row
+  // upload, unasked. 3-byte payload [rowHi, rowLo, ?] — the first two are the LAST ROW
+  // INDEX it has received so far, big-endian, 0-based (`00 c7` = 199, `01 03` = 259 —
+  // docs/NOTES.md, §"0xD3 is a row-received counter" and §"Ink is free, row changes are
+  // not"). The third byte is undecoded. Only the D11_H and B2 Pro have been seen sending
+  // it; most models never do, which is why a page with no 0xD3 at all must NOT be
+  // treated as a failure (see rowsProblem below). Tracked as the MAX seen, not the last:
+  // one page can emit it more than once (one per internal frame — a 200-row run cap
+  // split one all-black page into 199 then 259), and the true answer is the highest.
+  // Reset per PAGE (see resetRowsSeen, called at the top of sendPagePacked), not per
+  // job, since a job can carry several pages over the same wire.
+  let _rowsSeenMax = null;
+  function resetRowsSeen() { _rowsSeenMax = null; }
+
   // Register a waiter and return a token to clear it (on timeout) without disturbing
   // any other waiter in the queue.
   function registerWait(cmd, resolve) {
@@ -135,6 +149,10 @@
     const data = [];
     for (let i = 0; i < len && 4 + i < v.byteLength; i++) data.push(v.getUint8(4 + i));
     logRx(cmd, data);
+    if (cmd === 0xd3 && data.length >= 2) {
+      const rowIdx = (data[0] << 8) | data[1];
+      if (_rowsSeenMax === null || rowIdx > _rowsSeenMax) _rowsSeenMax = rowIdx;
+    }
     const idx = pendingQueue.findIndex((w) => w.cmd === cmd || w.cmd === null);
     if (idx >= 0) {
       const [w] = pendingQueue.splice(idx, 1);
@@ -1008,6 +1026,7 @@
   // once every page has been sent — see sendPageEndAsync below.
   async function sendPagePacked(model, size, buf, stride, copies, onProgress, tag, deferAck) {
     const W = size.w_px, H = size.h_px;
+    resetRowsSeen();   // 0xD3 tracking is per PAGE, not per job — see its declaration above
     const c = Math.max(1, copies | 0);   // printer repeats this page `c` times from one upload
     if (isB1(model)) {
       await sendWait(0x03, [0x01], 0x04, 1000);                             // PageStart (B1 only)
@@ -1025,6 +1044,13 @@
     onProgress && onProgress("sending image…");
     await sendImage(buf, H, stride);                                         // shared total-mode 0x84/0x85 encoder
 
+    // PAGE_PIPELINE only: the 0xD3 row-check below (see rowsProblem) is deliberately
+    // SKIPPED for this path, by returning before it runs. Under pipelining the next
+    // page's sendPagePacked call — and its resetRowsSeen() — can run before this page's
+    // PageEnd ack (and any 0xD3 that rides with it) has actually arrived, so the max
+    // this function would see could belong to the wrong page. An alarm attributed to the
+    // wrong page is worse than no alarm (docs/TASKS.md T-038), so PAGE_PIPELINE gets
+    // neither — see the diagnostic's own caveats at the PAGE_PIPELINE declaration below.
     if (deferAck) return { ackPromise: sendPageEndAsync(tag) };
 
     // RETURN whether PageEnd was acknowledged. Discarding this is how a page that the
@@ -1037,6 +1063,15 @@
     tlog(pageEnd != null
       ? `${prefix}PageEnd acked in ${ackMs} ms`
       : `${prefix}PageEnd UNACKED after ${ackMs} ms (PAGE_ACK_MS)`);
+    // Only once PageEnd itself is confirmed does the row-received counter get to speak —
+    // an unacked PageEnd is already the unconfirmed path above/below this function's
+    // callers. This is what catches the truncated-but-100%-reported upload: PageEnd can
+    // be acked while rows were still dropped underneath it (measured on a D11_H,
+    // 2026-09-10, "paced" — see docs/TASKS.md T-038 and docs/NOTES.md).
+    if (pageEnd != null) {
+      const rowsErr = rowsProblem(H, tag);
+      if (rowsErr) { await endJob(); throw rowsErr; }  // PrintEnd first, so the paper still feeds out
+    }
     return pageEnd != null;
   }
 
@@ -1121,6 +1156,30 @@
   // caller needs to know it stalled at page 4 of 5, and that the paper was fed out.
   function unconfirmed(reason) {
     return new Error(`print not confirmed: ${reason}. PrintEnd was sent, so the paper has been fed out — check the labels, they may be blank, short or repeated.`);
+  }
+
+  // Called ONLY once PageEnd itself has been acked (see sendPagePacked) — an unacked
+  // PageEnd is already handled as unconfirmed elsewhere. Compares the highest 0xD3 row
+  // index seen on this page (_rowsSeenMax, reset per page — see its declaration) against
+  // `h`, the page height in rows. 0xD3's index is 0-based, so full reception is
+  // `_rowsSeenMax === h - 1`.
+  //
+  // Returns an Error to throw, or null in TWO different-meaning cases that must stay
+  // distinguishable in the log (docs/TASKS.md T-038's "distinguish FAILED from COULD NOT
+  // VERIFY"): no 0xD3 at all (most models never emit it — nothing here can say whether
+  // the page is complete) vs. a 0xD3 that confirms every row arrived.
+  function rowsProblem(h, tag) {
+    const prefix = tag ? `${tag}: ` : "";
+    const wantIdx = h - 1;
+    if (_rowsSeenMax === null) {
+      tlog(`${prefix}no 0xD3 seen; upload not verified`);
+      return null;
+    }
+    if (_rowsSeenMax >= wantIdx) {
+      tlog(`${prefix}rows confirmed: ${_rowsSeenMax}/${wantIdx}`);
+      return null;
+    }
+    return unconfirmed(`${prefix}printer's 0xD3 counter last reached row ${_rowsSeenMax}, but the page needed row ${wantIdx} — the label may have come out short`);
   }
 
   async function endJob() {

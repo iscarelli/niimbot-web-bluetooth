@@ -6,6 +6,22 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 ### Added
+- **T-038 — Catch a truncated upload with the 0xD3 row-received counter** (2026-09-10):
+  the printer volunteers, unasked, a `0xD3` notification during row upload naming the
+  last row index it has actually received (big-endian, 0-based); the driver used to file
+  it into `lastUnsolicited` and drop it. It is now tracked per page (as the MAX seen, not
+  the last, since one page can emit it more than once) and compared once `PageEnd`
+  (`0xE4`) itself has been acked — the case this closes is a page whose PageEnd is
+  confirmed while rows were still silently dropped underneath it, reproduced on a D11_H
+  in "paced" write mode. When the counter falls short, the job is rejected exactly like
+  an unconfirmed page: `PrintEnd` is sent first (so the paper still feeds out), then the
+  rejection names both the row actually received and the row the page needed. A page
+  with no `0xD3` at all is left alone and does NOT fail — most models have never been
+  seen emitting it (only the D11_H and B2 Pro have), and treating silence as failure
+  would break every one of them. `PAGE_PIPELINE` deliberately skips this check: under
+  pipelining the next page's tracker reset can race the previous page's `0xD3`, and an
+  alarm attributed to the wrong page would be worse than none. NOT hardware confirmation:
+  nothing here has been run against a real printer.
 - **T-037 — Let the caller override the per-model frame bundling** (2026-09-10):
   `Niimbot.BUNDLE` (`null` | `true` | `false`, default `null`/auto) is a new DIAGNOSTIC
   knob that overrides the per-model frame-bundling decision (`MODEL_IDS` `bundle`) at
