@@ -382,7 +382,8 @@
     // nothing else changed, the SAME batch printed whole TWICE, continuous like the
     // official app, in 10.5 s, with `rows confirmed: 259/259` on all ten pages — a
     // page's upload dropped from ~2080 ms to ~334 ms, under the ~900 ms the printer
-    // takes to print a row, which is what removes the pause between labels. Also
+    // takes to print one T12x22 LABEL (not one row), which is what removes the pause
+    // between labels. Also
     // confirmed on the worst case tried: 3 pages of 260 distinct rows each (the
     // per-page ceiling at this height), same row-confirmation.
     528:  { label: "Niimbot D11_H", task: "v4", dpi: 300, paced: false, bundle: true,  batteryScale: "enum" },     // MEASURED 2026-09-10 against the official NIIMBOT app: chargeLevel read 3 and the app showed 75% — not a full battery, so not a scale-endpoint coincidence, confirming enum
