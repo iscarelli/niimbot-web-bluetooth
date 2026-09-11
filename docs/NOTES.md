@@ -1620,12 +1620,27 @@ a 60 ms difference on a 5 to 7 second pause. Printing itself took 870 ms against
 density changed neither the wait nor the speed. One third of the energy bought nothing, which
 rules out the printhead being allowed to cool.
 
-Two candidates survive, neither tested: the gap sensor taking longer to position the next label
-after an opaque one, or a firmware limit that counts HEATED DOTS rather than energy (identical
-dot count in both runs, identical pause). The experiment that separates them changes one thing:
-a label black on its top half against one black on its bottom half — same dot count, differing
-only in whether the trailing edge is black. Naming a cause before that runs would be the guess
-this file warns against.
+**It is the count of heated dots, and nothing else.** Three variables were tested separately on
+the same printer, reading only the idle time with the counter parked at 100 % print / 100 % feed:
+
+| variable changed | result |
+|---|---|
+| density 3 -> 1, same dots | 5428/7049 ms -> 5369/6989 ms. **No effect.** |
+| black on the top half vs the bottom half, same dots | 3059 ms vs 3030 ms. **No effect.** |
+| whole label black vs half black | ~35 900 dots -> 5428/7049 ms; ~18 500 dots -> 3059/3030 ms |
+
+Halving the black halves the pause: **0.169 ms per black dot on the full page, 0.165 ms on the
+half page.** Linear, and independent of how hard each dot was burned.
+
+So the D11_H enforces a recovery interval sized by HOW MANY dots it fired, not by the energy it
+put through them and not by where they were. That is why density 1 bought nothing, and it
+clears the gap sensor: a label ending in solid black and one ending in white are followed by the
+same wait to within 29 ms.
+
+**The consequence for real labels, which is the part worth carrying:** ink costs throughput on
+this model at roughly 0.17 ms per black pixel. A 142 x 260 label that is 10 % black pays about
+600 ms per label on top of printing. It is a price, not a fault, and no driver setting changes
+it.
 
 ### What this does to the earlier "parked ack" note
 
