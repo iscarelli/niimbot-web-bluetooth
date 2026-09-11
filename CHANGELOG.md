@@ -4,8 +4,18 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/), and this project adheres to
 [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [2.6.0] - 2026-09-10
 ### Added
+- **Hardware confirmation, 2026-09-10** (D11_H): `PAGE_PIPELINE` was run on paper, twice.
+  Four T12x22 labels came out whole, in order, with no short and no repeated label, and
+  with no stop between them — the printer feeds continuously, the way the official app
+  does. The batch took **4685 ms** against ~12000 ms for the same four labels with the
+  flag off, and each `PageEnd` was acked in **169-193 ms** instead of the 2057-2684 ms
+  measured in the sequential path. Since the image, the write mode, the connection and
+  the session were identical, that 2-to-2.7-second window was never work the printer was
+  doing; see `docs/NOTES.md`, *The `PageEnd` ack is not slow, it is parked*. **The flag
+  still defaults to `false`:** this is four light pages on one model, and the ten-heavy-page
+  batch that motivated the whole investigation has not been run with it on.
 - **T-036 — Pipeline the next page while the previous ack is in flight** (2026-09-10):
   `Niimbot.PAGE_PIPELINE` (boolean, default `false`) is a new DIAGNOSTIC knob for
   `printBatch`'s single-job streaming loop. Off, the loop is byte-for-byte what it was
@@ -937,7 +947,10 @@ All notable changes to this project are documented here. The format is based on
   (`v4`, 300 dpi), reverse-engineered protocol V4 documentation, and a standalone demo.
 - Multi-label batches print as one continuous job (no stop/retract between labels).
 
-[Unreleased]: https://github.com/iscarelli/niimbot-web-bluetooth/compare/v2.3.1...HEAD
+[Unreleased]: https://github.com/iscarelli/niimbot-web-bluetooth/compare/v2.6.0...HEAD
+[2.6.0]: https://github.com/iscarelli/niimbot-web-bluetooth/compare/v2.5.0...v2.6.0
+[2.5.0]: https://github.com/iscarelli/niimbot-web-bluetooth/compare/v2.4.0...v2.5.0
+[2.4.0]: https://github.com/iscarelli/niimbot-web-bluetooth/compare/v2.3.1...v2.4.0
 [2.3.1]: https://github.com/iscarelli/niimbot-web-bluetooth/compare/v2.3.0...v2.3.1
 [2.3.0]: https://github.com/iscarelli/niimbot-web-bluetooth/compare/v2.2.0...v2.3.0
 [2.2.0]: https://github.com/iscarelli/niimbot-web-bluetooth/compare/v2.1.0...v2.2.0
