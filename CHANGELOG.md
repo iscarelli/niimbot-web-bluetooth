@@ -6,6 +6,20 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 ### Added
+- **T-039 — Bundle frames by default on the D11_H** (2026-09-11): `MODEL_IDS`
+  entry 528 (Niimbot D11_H) now defaults `bundle: true`. This is a hardware
+  confirmation, not a diagnostic change: on real paper, on a real D11_H, a
+  10-page batch (99-208 frames per page, `test/fixtures/qdc-etiquetas/`) printed
+  ZERO labels with `bundle: false` (one unconfirmed BLE write per row frame,
+  dropped silently — the same failure mode that broke v1.3.3 and v1.3.4). With
+  `Niimbot.BUNDLE = true` (T-037) and nothing else changed, the SAME batch
+  printed whole TWICE, continuous like the official app, in 10.5 s, with `rows
+  confirmed: 259/259` on all ten pages; a page's upload dropped from ~2080 ms to
+  ~334 ms, under the ~900 ms the printer takes to print a row, which is what
+  removes the pause between labels. Also confirmed on the worst case tried: 3
+  pages of 260 distinct rows each (the per-page ceiling at this height), same
+  row-confirmation. No other model was touched or measured — this is per-model,
+  not per-task.
 - **T-038 — Catch a truncated upload with the 0xD3 row-received counter** (2026-09-10):
   the printer volunteers, unasked, a `0xD3` notification during row upload naming the
   last row index it has actually received (big-endian, 0-based); the driver used to file
