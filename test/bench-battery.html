@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Battery byte bench — niimbot-web-bluetooth</title>
+<style>
+  body { font: 14px/1.4 system-ui, sans-serif; margin: 16px; max-width: 900px; }
+  button { font: inherit; padding: 6px 14px; margin-right: 8px; }
+  #log { width: 100%; height: 420px; font: 12px/1.35 ui-monospace, monospace; white-space: pre; margin-top: 12px; }
+  #now { font-size: 28px; font-weight: 600; margin: 12px 0; }
+  .muted { color: #666; }
+</style>
+</head>
+<body>
+<h2>Battery byte bench</h2>
+<p class="muted">
+  Polls heartbeat <code>0xDC[04]</code> and <code>0x40[0x0A]</code> every
+  <input id="every" type="number" value="15" min="3" style="width:4em"> s and logs the raw bytes.
+  A line is written on every poll; changes are marked with <code>&lt;&lt;</code>.
+  Bench tool only — nothing here ships (<code>test/</code> is outside <code>package.json</code> <code>files</code>).
+</p>
+<button id="connect">Connect</button>
+<button id="stop" disabled>Disconnect</button>
+<button id="copy">Copy log</button>
+<button id="clear">Clear log</button>
+<div id="now">—</div>
+<textarea id="log" readonly spellcheck="false"></textarea>
+
+<script src="../src/niimbot.js"></script>
+<script>
+  const $ = (id) => document.getElementById(id);
+  let timer = null, last = null, polls = 0;
+
+  const hex = (a) => Array.from(a || [], (b) => b.toString(16).padStart(2, "0")).join(" ");
+  const ts = () => new Date().toTimeString().slice(0, 8);
+  function line(s) { $("log").value += s + "\n"; $("log").scrollTop = $("log").scrollHeight; }
+
+  async function poll() {
+    if (!Niimbot.printer) return;
+    polls++;
+    let hb = null, info = null, err = "";
+    try {
+      hb = await Niimbot.probe(0xdc, [0x04], 1000);      // Heartbeat, type 04 → usually 0xD9
+      info = await Niimbot.probe(0x40, [0x0a], 600);     // PrinterInfo: ChargeLevel
+    } catch (e) {
+      err = ` ERROR ${e.message}`;
+      if (/Not connected/.test(e.message)) {            // the driver clears the link on gattserverdisconnected
+        stopPolling();
+        line(`${ts()}  LINK DROPPED after ${polls} polls (last idx2 = ${last}) — press Connect to resume`);
+        $("stop").disabled = true; $("connect").disabled = false;
+        return;
+      }
+    }
+    const idx2 = hb && hb.data ? hb.data[2] : null;
+    const ci = info && info.data ? info.data[0] : null;
+    const chg = last !== null && idx2 !== last ? `  << changed from ${last}` : "";
+    line(`${ts()}  #${String(polls).padStart(3)}  hb ${hb ? "0x" + hb.cmd.toString(16) + " [" + hex(hb.data) + "]" : "no reply"}  idx2=${idx2}  |  0x40[0a] → ${info ? "0x" + info.cmd.toString(16) + " [" + hex(info.data) + "]" : "no reply"}  val=${ci}${chg}${err}`);
+    if (idx2 !== null) last = idx2;
+    $("now").textContent = `heartbeat idx2 = ${idx2}   ·   0x40[0a] = ${ci}   ·   ${Niimbot.printer.label}`;
+  }
+
+  function stopPolling() { if (timer) clearInterval(timer); timer = null; }
+
+  $("connect").addEventListener("click", async () => {
+    $("connect").disabled = true;
+    try {
+      const reg = await (await fetch("../registry.json")).json();
+      const sel = reg.models[reg.default_model];
+      const allPrefixes = [...new Set(Object.values(reg.models).flatMap((m) => m.name_prefixes || []))];
+      const p = await Niimbot.identify({ ...sel, name_prefixes: allPrefixes });
+      line(`${ts()}  connected: ${p.label} (id ${p.modelId}, protocol v${p.protocolVersion}, BLE "${p.deviceName || "?"}")  driver ${Niimbot.VERSION}`);
+      last = null; polls = 0;
+      $("stop").disabled = false;
+      await poll();
+      timer = setInterval(poll, Math.max(3, Number($("every").value) || 15) * 1000);
+    } catch (e) {
+      line(`${ts()}  connect failed: ${e.message}`);
+      $("connect").disabled = false;
+    }
+  });
+
+  $("stop").addEventListener("click", async () => {
+    stopPolling();
+    try { await Niimbot.disconnect(); } catch (e) {}
+    line(`${ts()}  disconnected after ${polls} polls (last idx2 = ${last})`);
+    $("stop").disabled = true; $("connect").disabled = false; $("now").textContent = "—";
+  });
+
+  $("copy").addEventListener("click", () => navigator.clipboard.writeText($("log").value));
+  $("clear").addEventListener("click", () => { $("log").value = ""; });
+</script>
+</body>
+</html>
