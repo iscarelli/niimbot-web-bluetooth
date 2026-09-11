@@ -1512,3 +1512,35 @@ held.
 **One loose end in the log:** between label 3's ack and the start of page 3 there are ~490 ms
 spent on two `0xA3` polls of the job page counter. That is the driver's own loop, not the
 printer. Worth tightening, but small next to what this change already removed.
+
+## Ink is free, row changes are not (D11_H, 2026-09-10)
+
+A 142x260 page filled **entirely black** printed perfectly on a D11_H: full length, every
+row, `PrintEnd` acked, 1881 ms end to end. It costs **2 frames**, because the encoder emits
+one frame per run of identical rows and the run is capped at 200 — rows 0-199 in one frame,
+rows 200-259 in a second. The same page as fine text costs **208 frames**, because 191 of
+its 260 rows differ from their neighbour.
+
+So a frame is a fixed 6 + stride bytes whatever it contains: **black pixels are free, and
+what costs is a row differing from the one above it.** The blackest possible label is the
+cheapest one to send.
+
+**What that run eliminates.** Maximum ink with minimum frames printed clean, so on this
+printer neither print density nor thermal load is what truncates the ESP32 batch's pages.
+Nor is the 200-row run cap, nor the row index exceeding 200: rows 200-259 came out. A
+separate light "staircase" page of 10 solid bars (about 20 frames) covering the full height
+also printed all ten bars. **By elimination the remaining variable is the frame count**, not
+the picture, the ink, or the geometry — the T12x22 size is confirmed good.
+
+### The `0xD3` counter is the instrument for what is left
+
+It reported `00 c7` (199) and then `01 03` (259) on the all-black page — exactly the last row
+of each of the two frames. That is the first time it has been seen twice inside one page, and
+it makes the decode in *`0xD3` is a row-received counter* (above) hard to doubt.
+
+**The emission rule is still unknown**, and one capture contradicts the obvious guess: the
+staircase page, also 260 rows, emitted only `01 03` (259) — no 199. So "every 200 rows" does
+not fit. Whatever the rule, the value itself is trustworthy, and that is enough to make it the
+tool for the open question: on a page that truncates, a last `0xD3` of 259 means the printer
+received everything and printed part of it, while a lower value means the tail never arrived.
+Nothing in the driver reads it yet.
