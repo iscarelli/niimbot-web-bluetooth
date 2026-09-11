@@ -374,8 +374,18 @@
     // D11_H, discovered 2026-08-13 by open discovery (it advertises "D11_H-…", and
     // reports protocol 5). The v4 sequence PRINTS on it — solid black came out on the
     // first attempt — which is what the protocol doc predicted and nobody had tried.
-    // `paced`/`bundle` are the conservative defaults: neither has been measured here.
-    528:  { label: "Niimbot D11_H", task: "v4", dpi: 300, paced: false, bundle: false, batteryScale: "enum" },     // MEASURED 2026-09-10 against the official NIIMBOT app: chargeLevel read 3 and the app showed 75% — not a full battery, so not a scale-endpoint coincidence, confirming enum
+    // `paced` is still the conservative default: not measured here. `bundle: true` IS
+    // measured — 2026-09-11 in the small hours, on real paper, a real D11_H: with
+    // `bundle: false` a real 10-page batch (99-208 frames per page,
+    // `test/fixtures/qdc-etiquetas/`) came out as ZERO labels, one frame-per-write and
+    // unconfirmed writes dropped silently. With `Niimbot.BUNDLE = true` (T-037) and
+    // nothing else changed, the SAME batch printed whole TWICE, continuous like the
+    // official app, in 10.5 s, with `rows confirmed: 259/259` on all ten pages — a
+    // page's upload dropped from ~2080 ms to ~334 ms, under the ~900 ms the printer
+    // takes to print a row, which is what removes the pause between labels. Also
+    // confirmed on the worst case tried: 3 pages of 260 distinct rows each (the
+    // per-page ceiling at this height), same row-confirmation.
+    528:  { label: "Niimbot D11_H", task: "v4", dpi: 300, paced: false, bundle: true,  batteryScale: "enum" },     // MEASURED 2026-09-10 against the official NIIMBOT app: chargeLevel read 3 and the app showed 75% — not a full battery, so not a scale-endpoint coincidence, confirming enum
     // D110, model id 2304, printed end to end on hardware 2026-08-14 (advertised name
     // "D110-FC06023035"). `task: "b1"` is MEASURED, not assumed. Driven as `v4` the
     // printer acked SetDensity (0x21→0x31), SetLabelType (0x23→0x33), PrintStart 9b
@@ -388,7 +398,7 @@
     // not a proven requirement: the b1 run wrote paced and the printer's own row
     // counter (0xd3) reached 590 of 591, so nothing was dropped — unpaced was never
     // tried on this model. `bundle: false` is the conservative default, never measured
-    // here — same standing as the D11_H entry.
+    // here.
     // pagesPerJob: 1 — measured 2026-08-14. The D110 acks PrintStart pages=N and
     // SetPageSize copies=N exactly like any other b1-task model, but only actually
     // PRINTS the first page: a 3-copy upload prints ONE label and the page counter
@@ -416,8 +426,7 @@
     // warnOverrideVsModel(), whose text asserts the model "NEEDS pacing … it drops rows
     // on an unpaced burst" — a claim nobody here has evidence for on this model. Do not
     // read this `false` as measured.
-    // `bundle: false` is the conservative default, never measured — same standing as
-    // the D11_H (528) entry.
+    // `bundle: false` is the conservative default, never measured.
     6912: { label: "Niimbot B2 Pro", task: "v4", dpi: 300, paced: false, bundle: false, batteryScale: "percent" }, // from niimbluelib#28's upstream claim; NOT measured here
     // N1, model id 3586 (0x0E02), advertised name e.g. "N1-H324110115", firmware 4.07.
     // Printed end to end on hardware 2026-08-14.
