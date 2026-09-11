@@ -1544,3 +1544,78 @@ not fit. Whatever the rule, the value itself is trustworthy, and that is enough 
 tool for the open question: on a page that truncates, a last `0xD3` of 259 means the printer
 received everything and printed part of it, while a lower value means the tail never arrived.
 Nothing in the driver reads it yet.
+
+## The D11_H truncation was one BLE write per row, and bundling is the whole fix (2026-09-11)
+
+The failure that started this: a real 10-page batch from the ESP32-Telemetria-Suite panel
+(kept as `test/fixtures/qdc-etiquetas/`, 99 to 208 frames per page) printed **zero** labels on
+a D11_H, and a single 208-frame page printed **short**, missing a contiguous block at the end.
+The same printer prints the same pages from the official NIIMBOT app.
+
+**The cause was the write count, not the printer.** Without bundling this model sends one
+unacknowledged BLE write per row frame: 208 writes for one page. Unacked writes are dropped in
+silence — the failure that broke v1.3.3 and v1.3.4, back through a new door: not someone
+choosing `fast`, but the DEFAULT path on a D11_H with a dense page.
+
+**`Niimbot.BUNDLE = true` (T-037) is the entire fix, with nothing else changed.** It packs
+frames into writes up to `BUNDLE_MAX`, so 208 writes become about 21.
+
+| | without bundling | with bundling |
+|---|---|---|
+| BLE writes, 208-frame page | 208 | ~21 |
+| upload of one page | ~2080 ms | **334 ms** |
+| the real 10-page batch | 0 labels | **10 whole, twice, 10.5 s, continuous** |
+
+`PAGE_ACK_MS`, `PAGE_PIPELINE` and `WRITE_MODE` were all back at their defaults for those runs.
+The acks came in at 341 to 750 ms, nowhere near any deadline. Ten `rows confirmed: 259/259`
+lines per run (T-038).
+
+### What eliminates every other candidate
+
+Each of these was run on the same printer, same roll, same night, and each came out whole:
+
+- **All-black page, 2 frames, maximum ink** — so ink, density and thermal load truncate
+  nothing. (See *Ink is free, row changes are not*, above.)
+- **Full-height staircase, 20 frames** — so rows 200-259 print and the T12x22 geometry is good.
+- **The demo's realistic label, 51 frames** — dense to the eye, cheap on the wire, because a
+  barcode is vertical bars and every row inside it repeats.
+- **3 pages of 260 DISTINCT rows out of 260 (T12x22's theoretical maximum), whole, twice** —
+  once at ~97 % ink and once at near zero. Both confirmed on paper.
+
+### The PageEnd ack costs about 3.5 ms per frame
+
+With bundling, in `paced`, the ack tracks the frame count and nothing else:
+
+| frames | ack measured | 3.5 ms x frames |
+|---|---|---|
+| 99 | 360 ms | 346 |
+| 111 | 341 ms | 388 |
+| 161 | 584 ms | 563 |
+| 208 | 750 ms | 728 |
+| 255 | 894 ms | 892 |
+
+In `acked` the same page acks in ~60 ms, because that processing happened during the upload
+(which takes ~2 s in that mode regardless). The cost did not disappear, it changed columns.
+
+**Consequence, and it is a number worth keeping: continuity has a threshold near 176 frames per
+page.** Printing one T12x22 label takes ~900 ms, and a page costs roughly
+`frames x 1.6 ms` to send plus `frames x 3.5 ms` to be acked. Under ~176 frames the next page
+is ready before the printhead runs dry and the batch comes out continuous, the way the official
+app does. Above it the paper stops between labels. Nine of the ten real pages sit under 176,
+which is why that batch is continuous; the 260-frame stress pages sit far above, which is why
+they stop. `PAGE_PIPELINE` is what takes the ack off the critical path for heavy pages, at the
+cost of T-038's row check, which is switched off under that flag.
+
+### What this does to the earlier "parked ack" note
+
+*The `PageEnd` ack is not slow, it is parked* (above) proposed that the D11_H holds its
+notification until another packet arrives. That measurement stands as recorded, but the
+comparison behind the explanation was confounded: it set a light pipelined page against a heavy
+sequential one and credited the difference to pipelining, when write count differed too.
+
+The model that fits everything measured since: **an unbundled dense page leaves ~200 writes
+queued in the OS BLE stack, `writeValueWithoutResponse` resolves long before the packets are on
+air, and `PageEnd` queues up behind them** — so it reaches the printer seconds late, and the
+same overflowing queue is what drops the rows. Bundling empties that queue, and the ack time
+that remains is the printer digesting frames, at ~3.5 ms each. Both readings agree on the part
+that mattered: those seconds were never the printer thinking.
