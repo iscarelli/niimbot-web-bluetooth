@@ -1612,10 +1612,20 @@ the millisecond, differing only in ink: the near-solid-black pages stopped **5 t
 between labels, the near-empty ones did not stop at all. So ink causes that pause, measured.
 **Why is not measured.** It happens AFTER the label is finished, with the printed-page counter
 already reporting 100 % print and 100 % feed, which rules out the printhead slowing mid-page.
-Two candidates nobody has tested: the head being allowed to cool between labels, or the gap
-sensor taking longer to find the edge of an opaque label. Naming either as the cause would be
-the guess this file warns against; the cheap experiment, if it ever matters, is a black label
-with a 2 mm white band at its foot.
+**Print density is NOT the variable.** The same 3-page black batch was run at `density: 3` and
+at `density: 1`, everything else identical (233/260/260 frames, same uploads, same driver
+settings). The idle time between labels, measured with the printed-page counter sitting at
+100 % print and 100 % feed, was 5428 / 7049 ms at density 3 and 5369 / 6989 ms at density 1 —
+a 60 ms difference on a 5 to 7 second pause. Printing itself took 870 ms against 900 ms, so
+density changed neither the wait nor the speed. One third of the energy bought nothing, which
+rules out the printhead being allowed to cool.
+
+Two candidates survive, neither tested: the gap sensor taking longer to position the next label
+after an opaque one, or a firmware limit that counts HEATED DOTS rather than energy (identical
+dot count in both runs, identical pause). The experiment that separates them changes one thing:
+a label black on its top half against one black on its bottom half — same dot count, differing
+only in whether the trailing edge is black. Naming a cause before that runs would be the guess
+this file warns against.
 
 ### What this does to the earlier "parked ack" note
 
