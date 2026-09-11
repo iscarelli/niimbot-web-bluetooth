@@ -358,6 +358,56 @@ The A/B still worth running is on the M2-H: leave it off the charger until the b
 and see whether it steps `4 → 3` (enum) or `100 → 99` (percentage). MultiMote has no
 M2-H, and it costs no labels.
 
+### Watched moving (2026-09-11) — `test/bench-battery.html`
+
+MultiMote's next comment on niimbluelib#28 (2026-09-11) adds that, in his observation, the
+percentage format **steps by 10**, so 1–9 never occur in it and `value <= 4 ? value * 25 :
+value` is unambiguous. That is his observation, not ours, so a bench page now polls
+`0xDC[04]` and `0x40[0x0A]` every 15 s and logs the raw bytes
+(`test/bench-battery.html`, served by `node demo/serve.mjs`). Three printers on the
+charger, same day:
+
+| printer | heartbeat | `idx2` over the session | `0x40[0a]` |
+|---|---|---|---|
+| D11_H (528) | `0xD9`, 11 bytes | `2 → 3 → 4`, 60 polls, no value in between | = `idx2` on every poll |
+| B1 (4096) | `0xD9`, **9 bytes** (protocol v3) | `4` throughout, 52 polls | = `idx2` on every poll |
+| B1 Pro (4097) | `0xD9`, 13 bytes | `100` (`0x64`) — already full | = `idx2` |
+
+Earlier the same day, read by hand in the demo's *Read status* while the B1 Pro charged:
+`0x28` = 40 at 11:50, `0x3c` = 60 at 11:53. With the 80 of the August captures the B1 Pro has
+now shown **40, 60, 80, 100** — every value a multiple of 10, none against the step-of-10
+claim. **Not a confirmation of it:** the 40 → 60 gap was 2½ minutes with no sample inside,
+and at 100 there is no transition to watch. The discriminating run is still owed — a
+percentage printer (B1 Pro after it drains, or the B2 Pro, whose "percent" is still
+upstream's claim) climbing on the charger at 15 s: `70 → 80` with nothing between confirms
+the step, any value not ending in 0 refutes it. Until then `NOTES.md` keeps "0–4 is
+undecidable from the value alone" as the driver's position and the per-model table stays.
+
+What the session did settle:
+
+- `0x40[0x0A]` (`In_PrinterInfoChargeLevel`) **is** the heartbeat byte, on all three
+  models, across 116 polls. Reading either is enough.
+- The D11_H enum moves — `2 → 3` at 14:21, `3 → 4` at 14:25 — so its "enum" is now measured
+  by movement as well as against the app. **25 % in four minutes is not charge accumulated,**
+  it is a voltage threshold being crossed; the same held for the B1 Pro's 40 → 60 in under
+  three. The byte follows cell voltage, on both scales.
+- The B1's heartbeat is 9 bytes and the charge byte is still `idx2`; `decodeHeartbeat`'s
+  `n ≥ 9` floor was right.
+
+**A lead, not a fact: `d[0..1]` looks like the cell voltage.** Read as a big-endian 16-bit
+value it climbs with charge and reacts to the charger within one sample:
+
+    B1 Pro   1d b3 (7603) at 40 %   →  1e 37 (7735) at 60 %   →  20 2c (8236) at 100 %
+    D11_H    1e 7f (7807) at level 2  →  1f 8b (8075) at level 4
+    B1       1f a1 (8097) on the charger  →  cable out at 14:44  →  1f 7b, 1f 51, settles ~1f 57 (8023)
+
+At 0.5 mV per unit that is 3.80 V → 3.87 V → 4.12 V on the B1 Pro and a 4.05 → 4.01 V sag
+when the B1's charger came out — a textbook Li-ion curve and a textbook float-to-rest drop.
+The note further down that `d[1]` "drifts on its own" (ribbon sweep, 2026-08-13) is
+describing the noise on top of this trend, not a contradiction of it: ±10 units between
+consecutive polls is what the logs show at rest. **Unit unconfirmed** — nothing short of a
+meter on the cell settles it — so the driver keeps it in `raw` and does not name it.
+
 Two more things that capture settled, both about bytes this table calls undecoded:
 
 - **Byte 0 is not constant.** It read `0x1d` there against `0x1f` in the six earlier
@@ -443,9 +493,11 @@ ribbons** — one roughly half spent, one brand new:
     0xA5           PrinterStatusData
 
 **Every response was byte-identical between the two ribbons.** The only bytes that
-differed are `d[1]` and `d[3]` of the heartbeat, and neither is usable: both drift on
-their own — `d[1]` changed with nothing touched at all, and `d[3]` moved `4b → 4c`
-between two reads **60 ms apart in one session**.
+differed are `d[1]` and `d[3]` of the heartbeat, and neither is usable for ribbon: both
+drift on their own — `d[1]` changed with nothing touched at all, and `d[3]` moved `4b → 4c`
+between two reads **60 ms apart in one session**. (`d[0..1]` later turned out to track the
+battery — see "Watched moving (2026-09-11)" above — which is exactly why it moves with
+nothing touched.)
 
 So a caller can know *whether* a ribbon is fitted (`getStatus().decoded.heartbeat
 .ribbonInserted`) but not *how much is left* — not from this space. Re-probing the same
