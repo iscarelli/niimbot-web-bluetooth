@@ -1602,9 +1602,20 @@ page.** Printing one T12x22 label takes ~900 ms, and a page costs roughly
 `frames x 1.6 ms` to send plus `frames x 3.5 ms` to be acked. Under ~176 frames the next page
 is ready before the printhead runs dry and the batch comes out continuous, the way the official
 app does. Above it the paper stops between labels. Nine of the ten real pages sit under 176,
-which is why that batch is continuous; the 260-frame stress pages sit far above, which is why
-they stop. `PAGE_PIPELINE` is what takes the ack off the critical path for heavy pages, at the
-cost of T-038's row check, which is switched off under that flag.
+which is why that batch is continuous; the 260-frame stress pages sit far above, and stop for
+about 600 ms between labels. `PAGE_PIPELINE` is what takes the ack off the critical path for
+heavy pages, at the cost of T-038's row check, which is switched off under that flag.
+
+**A SECOND, much longer pause exists and this threshold does not explain it.** Two 3-page
+batches were run with identical frame counts (255 sent per page) and uploads that matched to
+the millisecond, differing only in ink: the near-solid-black pages stopped **5 to 7 seconds**
+between labels, the near-empty ones did not stop at all. So ink causes that pause, measured.
+**Why is not measured.** It happens AFTER the label is finished, with the printed-page counter
+already reporting 100 % print and 100 % feed, which rules out the printhead slowing mid-page.
+Two candidates nobody has tested: the head being allowed to cool between labels, or the gap
+sensor taking longer to find the edge of an opaque label. Naming either as the cause would be
+the guess this file warns against; the cheap experiment, if it ever matters, is a black label
+with a 2 mm white band at its foot.
 
 ### What this does to the earlier "parked ack" note
 
