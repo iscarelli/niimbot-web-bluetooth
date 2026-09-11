@@ -30,6 +30,7 @@ node test/one-page-per-job.test.js  # pagesPerJob split (D110, N1) + B1 Pro regr
 node test/draw-fit.test.js      # demo label text shrinks to fit a narrow label (no printer, no browser)
 node test/battery.test.js       # battery() percent/enum/contradiction decode harness (no printer)
 node test/dispatch.test.js      # notification dispatcher's waiter queue (T-035) (no printer)
+node test/bundle.test.js        # BUNDLE override: write count/size vs. per-model default (T-037) (no printer)
 ```
 
 The demo's inline `<script>` cannot be checked by `node --check`. To parse it, extract

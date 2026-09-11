@@ -4,6 +4,23 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/), and this project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+### Added
+- **T-037 — Let the caller override the per-model frame bundling** (2026-09-10):
+  `Niimbot.BUNDLE` (`null` | `true` | `false`, default `null`/auto) is a new DIAGNOSTIC
+  knob that overrides the per-model frame-bundling decision (`MODEL_IDS` `bundle`) at
+  write time. It exists because the D11_H sends one BLE write per row frame
+  (`bundle: false`) and a 208-frame page cuts short on paper while shorter pages come out
+  whole, yet there was no way to even TEST bundling on that model — `_bundleAllowed` was
+  fixed at connect from `MODEL_IDS` with no public override. An invalid value throws
+  `TypeError` naming the three accepted values rather than being ignored. Two paired
+  read-only getters, `Niimbot.DETECTED_BUNDLE` (the connected model's real default) and
+  `Niimbot.EFFECTIVE_BUNDLE` (what `sendBundled` is using right now), let a tester tell
+  "the override took effect" from "it was already that" — the connect summary line now
+  reports both (`bundle=<effective> (detected=<model>)`). The per-model default keeps
+  ruling normal use; bundling itself is only validated on the B1 and M2-H. NOT hardware
+  confirmation: nothing here has been run against a D11_H yet.
+
 ## [2.6.0] - 2026-09-10
 ### Added
 - **Hardware confirmation, 2026-09-10** (D11_H): `PAGE_PIPELINE` was run on paper, twice.
