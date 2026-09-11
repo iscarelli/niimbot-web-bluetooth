@@ -31,6 +31,7 @@ node test/draw-fit.test.js      # demo label text shrinks to fit a narrow label 
 node test/battery.test.js       # battery() percent/enum/contradiction decode harness (no printer)
 node test/dispatch.test.js      # notification dispatcher's waiter queue (T-035) (no printer)
 node test/bundle.test.js        # BUNDLE override: write count/size vs. per-model default (T-037) (no printer)
+node test/rows-received.test.js # 0xD3 row-received counter catches a truncated PageEnd-acked page (T-038) (no printer)
 ```
 
 The demo's inline `<script>` cannot be checked by `node --check`. To parse it, extract
