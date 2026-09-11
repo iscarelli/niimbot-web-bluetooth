@@ -1419,11 +1419,15 @@ longer hits the deadline.
 2026-09-10). So the ack comes first and the printing happens after — the 2 to 2.7 s delay is
 **not** the time the page takes to print.
 
-**What the printer is doing during those 2 to 2.7 seconds is not known.** Nothing here
-establishes a cause, and none is offered. The two candidates anyone would reach for —
-processing the uploaded image, or something in the paper path — are exactly the kind of
-guess this file's own rule (see *Lesson worth more than the fix*, above) warns against
-writing down without a measurement behind it. None was taken.
+**What the printer is doing during those 2 to 2.7 seconds was unknown when this was written,
+and the answer turned out to be "nothing".** A later run on the same printer got the same ack
+back in ~180 ms, by the single change of continuing to send packets after `0xE3` instead of
+going quiet — see *The `PageEnd` ack is not slow, it is parked*, below. The two candidates
+anyone would reach for — processing the uploaded image, or something in the paper path — are
+both wrong. Both were also exactly the kind of guess this file's own rule (see *Lesson worth
+more than the fix*, above) warns against writing down without a measurement behind it. Neither
+was written down, which is the only reason this section needed an amendment instead of a
+deletion.
 
 **Not measured: every model other than the D11_H.** This batch is one printer, one label
 size (79 frames/page), one session. Whether the 2.0–2.7 s window, or even the ack-before-print
@@ -1452,11 +1456,59 @@ stop:
 unconfirmed-job guarantee as the non-pipelined path (see `src/niimbot.js`, `sendPagePacked` /
 `sendPageEndAsync` / the `PAGE_PIPELINE` branch in `printBatch`).
 
-**What this task does NOT establish: whether the printer actually accepts the next page while
-the previous one's ack is still outstanding.** Nobody has run this on paper. It might work
-cleanly, might silently corrupt or drop a page, or might answer with the same `0xdb`-style
-refusal the D110 gives an out-of-turn command (see *D110: every multi-label path fails*,
-above) — on a different model, but the same *class* of failure. That is exactly why the flag
-defaults off and is documented as a diagnostic, not a setting: this driver's history is silent
-short prints (v1.3.3, v1.3.4, and the 2026-08-13 4-of-5 batch), so an unmeasured "send ahead"
-behaviour gets a flag and a log line, not a default.
+**When written, this task did NOT establish whether the printer accepts the next page while the
+previous one's ack is still outstanding.** It might have worked cleanly, silently corrupted or
+dropped a page, or answered with the same `0xdb`-style refusal the D110 gives an out-of-turn
+command (see *D110: every multi-label path fails*, above) — a different model, but the same
+*class* of failure. That is why the flag defaults off and is documented as a diagnostic, not a
+setting: this driver's history is silent short prints (v1.3.3, v1.3.4, and the 2026-08-13 4-of-5
+batch), so an unmeasured "send ahead" behaviour gets a flag and a log line, not a default.
+
+**It has since been run on paper, on one printer.** The D11_H accepts it, and the result is
+below. The flag still defaults to `false`, for the reasons listed there.
+
+## The `PageEnd` ack is not slow, it is parked (2026-09-10)
+
+Same printer (**D11_H**), same label (T12×22, ~21 frames/page), same driver build (2.5.0), same
+four-page batch. The only thing changed between the two runs is `Niimbot.PAGE_PIPELINE`:
+
+| | sequential (`false`) | pipelined (`true`) |
+|---|---|---|
+| `PageEnd` ack, per page | 2057 … 2684 ms | 193 · 169 · 170 · 183 ms |
+| four labels, wall clock | ~12000 ms | **4685 ms** |
+| paper | stops and dries between labels | continuous, like the official app |
+
+**The ack was ready the whole time, waiting for a packet.** In the sequential path the driver
+sends `0xE3` and then goes silent until `0xE4` arrives. In the pipelined path it sends `0xE3`
+and immediately starts the next page — `0xA3`, then `0x13` — and the `0xD3`/`0xE4` pair comes
+back ~180 ms later. Same image, same `paced` write mode at 10 ms, same connection, same session.
+So those 2 to 2.7 seconds are not work the printer is doing.
+
+**Hypothesis: the D11_H flushes its notification queue only when it receives a packet.** That
+fits every number above and nothing contradicts it, but it is a hypothesis and it has not been
+tested directly.
+
+**What would kill it:** poll `0xA3` on a fixed interval while waiting for `0xE4` in the
+*sequential* path. If the ack still takes ~2 s with traffic on the wire, this explanation is
+wrong and the real difference is something about the pipelined ordering itself. That test has
+not been run.
+
+**Measured on paper, 2026-09-10, and repeated once to confirm.** Both runs put out four labels
+numbered `N 1` to `N 4`, whole, in order, with no short and no repeated label, and with no stop
+between them. In the timed run the upload finished at t+2739 ms; the remaining ~1.9 s of the
+4685 ms is paper physically moving, which is the floor. The printed-page counter reached
+`page 4 (print 100%, feed 100%)` before `PrintEnd` went out, so the unconfirmed-job guarantee
+held.
+
+**Still not measured, and why the flag stays `false`:**
+
+- **Ten heavy pages (79 frames each)** — the ESP32 batch that started this investigation, and
+  the case where an out-of-turn page has the most room to go wrong. Four light pages passing
+  does not cover it.
+- **Every model other than the D11_H.** The B1, B1 Pro, M2-H, D110, N1 and B2 Pro are untested
+  with the flag on, and the D110 already refuses out-of-turn commands with `0xdb`.
+- **Anything beyond one session.** Two identical runs, one roll, one label size, one evening.
+
+**One loose end in the log:** between label 3's ack and the start of page 3 there are ~490 ms
+spent on two `0xA3` polls of the job page counter. That is the driver's own loop, not the
+printer. Worth tightening, but small next to what this change already removed.
