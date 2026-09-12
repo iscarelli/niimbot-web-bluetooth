@@ -502,8 +502,8 @@
     // `isSecureContext` is what the browser itself gates the API on, so it is the
     // one signal that tells them apart (read off `root`, the module's window/globalThis
     // — a bare `window` reference throws in the Node harnesses this file also runs
-    // under). Conflating the two causes sent the launch's first real user
-    // (r/selfhosted, 2026-09-09, on HTTPS) to check his connection when the actual
+    // under). Conflating the two causes sent a real user
+    // (on HTTPS) to check their connection when the actual
     // cause was Brave — which ships without Web Bluetooth, behind a flag — not
     // exposing the API at all.
     if (!navigator.bluetooth) {

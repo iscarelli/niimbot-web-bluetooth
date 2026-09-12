@@ -5,9 +5,9 @@
  * non-zero on failure. NO PRINTER IS INVOLVED — `navigator.bluetooth` is absent from
  * the fake `navigator` itself, so connect() throws before any GATT call is made.
  *
- * Why this exists: the launch's first real user (r/selfhosted, 2026-09-09) hit the
+ * Why this exists: a real user hit the
  * old single-cause message on HTTPS and went looking for an HTTPS problem that didn't
- * exist — his browser (Brave) simply doesn't expose Web Bluetooth, flag or no flag.
+ * exist — their browser (Brave) simply doesn't expose Web Bluetooth, flag or no flag.
  * `!navigator.bluetooth` alone can't say which case it is; `isSecureContext` can,
  * because it's the one thing the browser itself gates the API on.
  *

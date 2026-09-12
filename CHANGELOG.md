@@ -181,8 +181,8 @@ All notable changes to this project are documented here. The format is based on
 ### Fixed
 - **T-025 — tell "no Web Bluetooth" apart from "insecure context"**: `connect()`'s
   `!navigator.bluetooth` check (`src/niimbot.js`) and the demo's matching warning
-  (`demo/index.html`) blamed HTTPS unconditionally, and that sent the launch's first
-  real user (r/selfhosted, 2026-09-09) looking in the wrong place — he was already on
+  (`demo/index.html`) blamed HTTPS unconditionally, and that sent a real user looking in
+  the wrong place — they were already on
   HTTPS, and the real cause was his browser (Brave) not exposing Web Bluetooth at all,
   which it keeps behind a flag by default. Both now branch on `isSecureContext`
   (`root.isSecureContext` in the driver, `window.isSecureContext` in the demo, which is
