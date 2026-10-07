@@ -2,7 +2,7 @@
 
 Reverse-engineered on the **Niimbot B1 Pro** and validated in the lab on five
 printers (see below). Covers two print-task variants over the same frame: `v4`
-(D110_M / D11_H / B1 Pro / B21 Pro, 300 dpi) and `b1` (B1 / B21 / D11, **protocol
+(D11_H / B1 Pro / B21 Pro, 300 dpi; the D110_M is in the registry as `v4` at 203 dpi, identified but not printed) and `b1` (B1 / B21 / D11, **protocol
 version 3**, 203 dpi). See [Print task variants](#print-task-variants-v4-vs-b1).
 
 > **Validated:** the **B1** (`b1`, 203 dpi), **B1 Pro** (`v4`, 300 dpi), **M2-H**

@@ -408,6 +408,18 @@
     // is per-MODEL, not per-task — do not add the field to another b1-task model
     // without measuring it broken the same way.
     2304: { label: "Niimbot D110",   task: "b1", dpi: 203, paced: true,  bundle: false, pagesPerJob: 1, batteryScale: "enum" },  // "enum" is the upstream default; not verified on this model
+    // D110_M, model id 2320 (0x0910), advertised name e.g. "D110_M-H822021655".
+    // IDENTIFIED on a real printer 2026-10-07 (connect + status only) — NEVER PRINTED.
+    // Seen: 0x40[0x08] answered `09 10` = 2320; 0xb5 version bytes `03 01` = 301 =
+    // protocol 4; heartbeat 11 bytes. NOT measured here (niimbluelib printer_models.ts and
+    // print_tasks/index.ts, read 2026-10-07): dpi 203, printhead 96 px, and that the D110_M
+    // at protocol v4 uses the `v4` sequence (otherwise `b1`). Hence task "v4" — the plain
+    // D110 (2304) needed "b1", so do NOT assume this entry behaves like it.
+    // paced/bundle/pagesPerJob are CONSERVATIVE choices copied from the D110's failure
+    // modes, not measurements: pagesPerJob 1 because its sibling D110 prints only the
+    // first page of a multi-page job. Not in INVERTED_LID_MODELS: lidClosed=true was read
+    // with the lid shut.
+    2320: { label: "Niimbot D110_M", task: "v4", dpi: 203, paced: true,  bundle: false, pagesPerJob: 1, batteryScale: "enum" },  // dpi/task from upstream, NOT printed here; "enum" is the upstream default, not verified
     // B2 Pro, model id 6912 (0x1B00), advertised name e.g. "B2 Pro-I304050285",
     // protocol 5. Printed end to end on hardware 2026-08-14.
     // `task: "v4"` is MEASURED: SetDensity (0x21→0x31), SetLabelType (0x23→0x33),
@@ -971,7 +983,7 @@
   // Niimbot app keeps a single job open and streams pages back-to-back.
 
   // Two task variants (see registry.json `task`):
-  //   "v4" (D110M / B1 Pro / B21 Pro, protocol 5-ish, 300 dpi): PrintStart 9b
+  //   "v4" (D110_M / B1 Pro / B21 Pro, protocol 4-5; independent of dpi — the D110_M is 203): PrintStart 9b
   //         (speed + page count); a single job streams N pages; status-poll paced.
   //   "b1" (B1 / B21 / D11, *protocol 3*, 203 dpi): PrintStart 7b · PageStart [1]
   //         · SetPageSize 6b [H,W,copies] (cols = printhead width 384, multiple of 8)

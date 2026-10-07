@@ -1,5 +1,5 @@
 {
-  "_comment": "Registry of Niimbot printer models and label sizes. w_px = printhead axis (width), h_px = feed axis (length). `task` selects the print-task variant in niimbot.js: \"v4\" (D110M/B1 Pro/B21 Pro) or \"b1\" (B1/B21/M2-H) — task is the protocol sequence, independent of dpi (B1 is 203 dpi, M2-H is 300 dpi, both task \"b1\"). `dpi` pairs a size with its model(s). `id` = printer model id for auto-detection. All models/sizes here are validated on real hardware; `_note` fields just document how a size's pixels were derived.",
+  "_comment": "Registry of Niimbot printer models and label sizes. w_px = printhead axis (width), h_px = feed axis (length). `task` selects the print-task variant in niimbot.js: \"v4\" (B1 Pro/B2 Pro/D11_H/D110_M) or \"b1\" (B1/B21/M2-H) — task is the protocol sequence, independent of dpi (B1 is 203 dpi, M2-H is 300 dpi, both task \"b1\"). `dpi` pairs a size with its model(s). `id` = printer model id for auto-detection. All models/sizes here are validated on real hardware EXCEPT the D110_M (d110m) and its two sizes (T15x50_d110m, T12x40_d110m): those were identified on a real printer (connect + status) but NEVER printed. `_note` fields document how a size's pixels were derived.",
   "models": {
     "b1pro": {
       "label": "Niimbot B1 Pro",
@@ -71,6 +71,18 @@
       "speed": 1,
       "name_prefixes": ["D110"]
     },
+    "d110m": {
+      "_note": "Niimbot D110_M — model id 2320, advertised name e.g. 'D110_M-H822021655'. Identified on a real printer 2026-10-07 (connect + status only, NOT printed): 0x40[0x08] answered 09 10 = 2320, 0xb5 version bytes 03 01 = 301 = protocol 4, heartbeat 11 bytes. Upstream claims, NOT measured here (niimbluelib printer_models.ts / print_tasks/index.ts): dpi 203, printhead 96 px, density 1-5 default 3, task v4 at protocol 4 (otherwise b1). So task 'v4' — unlike the plain D110 (2304), which needed 'b1'. Not printed, so the task, dpi, density, label_type and speed are all unconfirmed.",
+      "label": "Niimbot D110_M",
+      "id": 2320,
+      "dpi": 203,
+      "protocol": "v4",
+      "task": "v4",
+      "density": 3,
+      "label_type": 1,
+      "speed": 1,
+      "name_prefixes": ["D110"]
+    },
     "n1": {
       "_note": "Niimbot N1 — model id 3586 (0x0E02), advertised name e.g. 'N1-H324110115', firmware 4.07. Validated on hardware 2026-08-14: identifies and prints end to end (printer counter reached page 1, print 100%, feed 100%). protocol 'v4' is the FRAMING (0x55 0x55 ... 0xAA 0xAA), which works, exactly as the d110 entry explains; task 'b1' is the command sequence, and it is MEASURED — driven as v4 the printer answered the 13-byte SetPageSize and PageEnd with an undocumented 0xdb 06 and nothing else (the D110's refusal signature), driven as b1 every command acked and the page printed. dpi 203 is MEASURED against the label and CONTRADICTS the spec sheet: the N1 is sold as 300 dpi, but a row-numbered ruler was truncated after row 350 and row 350 landed ~45 mm down a 50 mm label (~7.8 px/mm, against 7.99 for 203 dpi; at 300 dpi it would have sat 29.6 mm down). density 3 / label_type 1 are the values the printer ACCEPTED (0x31 and 0x33 acked), not values compared against alternatives. Its size entry is T14x50, whose w_px of 96 is the PRINTHEAD width, pinned on hardware 2026-08-14 by two bounds from opposite sides — see that entry's note. The driver carries pagesPerJob 1 for this model, MEASURED 2026-08-14: a 3-copy job was acked and every row arrived (d3 reported row 399 of 400), yet ONE label printed and the counter parked at page 1 until the driver timed out, so the driver splits N copies/pages into N separate jobs — per-MODEL, like every other entry here.",
       "label": "Niimbot N1",
@@ -85,6 +97,26 @@
     }
   },
   "sizes": {
+    "T15x50_d110m": {
+      "_note": "D110_M 15×50 mm @ 203 dpi. h_px = 400 is arithmetic (50 mm × 8). Round-corner white roll, fed standing (short side across the head). w_px is the PRINTHEAD (96, upstream claim, NOT measured), not the label. No code (unknown). No offset_y_px: paper registration NOT measured on this model — do NOT copy T15x50's -2, offsets are per model. Never printed.",
+      "label": "15 × 50 mm round corner (D110_M)",
+      "w_mm": 15,
+      "h_mm": 50,
+      "w_px": 96,
+      "h_px": 400,
+      "margin": 6,
+      "dpi": 203
+    },
+    "T12x40_d110m": {
+      "_note": "D110_M 12×40 mm @ 203 dpi. h_px = 320 is arithmetic (40 mm × 8). Round-corner white roll, fed standing (short side across the head). w_px is the PRINTHEAD (96, upstream claim, NOT measured), not the label. No code (unknown). No offset_y_px: paper registration NOT measured on this model — do NOT copy T15x50's -2, offsets are per model. Never printed.",
+      "label": "12 × 40 mm round corner (D110_M)",
+      "w_mm": 12,
+      "h_mm": 40,
+      "w_px": 96,
+      "h_px": 320,
+      "margin": 6,
+      "dpi": 203
+    },
     "T50x30": {
       "_note": "B1 Pro 50×30 @ 300 dpi. w_px 576 is the printhead width the printer reports via probe(0xdc,[0x03]) on a B1 Pro (model id 4097, read 2026-09-07), AND confirmed on paper the same day: printing four 4 px steps at columns 568, 572, 576 and 580 with w_px 584, the steps at 568 and 572 came out and those at 576 and 580 did not, so columns 0-575 print and 576 does not. The previous 584 exceeded the head by 8 px = 0.68 mm, which prints nothing and raises no error. See docs/NOTES.md, the two sections dated 2026-09-07.",
       "label": "50 × 30 mm",

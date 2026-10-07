@@ -12,7 +12,7 @@ dependencies.
 
 Reverse-engineered and validated on real hardware (**Niimbot B1**, **B1 Pro**,
 **B2 Pro**, **M2-H**, **D11_H**, **D110** and **N1**). Two print-task variants over the same
-frame cover the **B1 Pro / B2 Pro / D11_H / B21 Pro / D110_M** line (300 dpi, `v4`) and the
+frame cover the **B1 Pro / B2 Pro / D11_H / B21 Pro** line (300 dpi, `v4`) and the
 **B1 / M2-H / B21 / D110 / N1** line (`b1`, mostly protocol 3) — chosen automatically per
 connected printer.
 
@@ -75,6 +75,7 @@ either. Take one, both or neither.
 | **Niimbot M2-H** | `b1` | 300 | 4608 | ✅ Validated on real hardware |
 | **Niimbot D11_H** | `v4` | 300 | 528 | ✅ Validated on real hardware |
 | **Niimbot D110** | `b1` | 203 | 2304 | ✅ Validated on real hardware |
+| **Niimbot D110_M** | `v4` | 203 | 2320 | ⚠️ Identified (connect + status), **not printed yet** — dpi and task are upstream claims |
 | **Niimbot N1** | `b1` | 203 | 3586 | ✅ Validated on real hardware — **203 dpi measured, though it is sold as 300** |
 
 > **The N1's dpi is not a typo.** Niimbot sells it as a 300 dpi printer; against the label
@@ -86,8 +87,8 @@ either. Take one, both or neither.
 > 203 dpi is 112 px, so ~1 mm on each side never prints. The 96 was pinned on hardware,
 > not guessed (see the entry's `_note`).
 
-These seven are in `registry.json` and tested end-to-end. Other printers on the same
-two protocol families — **`v4`**: B21 Pro / D110_M; **`b1`**: B21 / D11 / B21S —
+The seven validated ones are in `registry.json` and tested end-to-end; the D110_M is there too but only identified, not printed. Other printers on the same
+two protocol families — **`v4`**: B21 Pro; **`b1`**: B21 / D11 / B21S —
 are likely compatible but **untested**. To try one, add a model entry to `registry.json`
 (copy an existing model, set its `task`/`dpi`/`id`); please report results.
 

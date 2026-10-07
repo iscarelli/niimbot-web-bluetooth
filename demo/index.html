@@ -629,6 +629,9 @@
     //     n1 96, d110 96 — measured by print comparison: bands of increasing width stop
     //       getting wider at the head (registry.json's T14x50 and T15x50 _note fields).
     //
+    //   UPSTREAM value, NOT measured: d110m 96 — niimbluelib's printheadPixels for the
+    //     D110_M; that printer was identified but never printed here.
+    //
     //   NOT verified head widths (three): b1pro 584, b1 384, m2h 567. These predate this
     //     map having any stated meaning; nobody has probed a head on them.
     //     m2h 567 is demonstrably NOT the head — that printer reports 576 via dc[03], and
@@ -642,7 +645,7 @@
     // Leave those three values ALONE. Correcting them is a separate, hardware-backed
     // decision, not a drive-by edit — and this map is not the place to record one, since
     // registry.json has no printhead field yet.
-    const PRINTHEAD_PX = { b1pro: 584, b1: 384, m2h: 567, d110: 96, b2pro: 576, d11h: 144, n1: 96 };
+    const PRINTHEAD_PX = { b1pro: 584, b1: 384, m2h: 567, d110: 96, d110m: 96, b2pro: 576, d11h: 144, n1: 96 };
 
     let lastTag = null;              // filled by "Read tag" — the barcode is never typed
 

@@ -6,6 +6,12 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 ### Added
+- **T-040 — Add the D110_M (model id 2320, 203 dpi) and its two round-corner sizes**
+  (2026-10-07): a real D110_M connects as "unknown (id 2320)"; `MODEL_IDS` now has it
+  (task `v4`, 203 dpi, `pagesPerJob: 1`), `registry.json` has `d110m` plus `T15x50_d110m`
+  and `T12x40_d110m` (96 px head), and the demo knows its printhead. Identified on
+  hardware (connect + status only); dpi, task and head width are upstream claims and
+  NOTHING was printed — hardware confirmation is outstanding.
 - **T-039 — Bundle frames by default on the D11_H** (2026-09-11): `MODEL_IDS`
   entry 528 (Niimbot D11_H) now defaults `bundle: true`. This is a hardware
   confirmation, not a diagnostic change: on real paper, on a real D11_H, a
