@@ -5,6 +5,16 @@ All notable changes to this project are documented here. The format is based on
 [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
+### Changed
+- **T-041 — A roll remembers its millimetres; the pixels come from the connected printer**
+  (2026-10-07): the demo stored a roll as the pixel size of one model (a roll registered
+  on the B1 Pro carried 300 dpi / 584 px onto a D110_M). A roll record is now
+  `{ w_mm, h_mm, name?, color? }`, and one resolver picks the size for the SELECTED
+  printer: a shipped size made for that model, else a shipped size with the same mm and
+  dpi, else a custom `C<w>x<h>_<model>`. Changing the model re-resolves the roll; the
+  Rolls list shows millimetres only. `label-memory.js` 1.1.0 accepts mm-only records
+  (additive; legacy `{ size }` still read). Rolls saved lying down (e.g. a 15 mm roll
+  as 50 × 15) must be forgotten and re-saved. No print path changed.
 ### Added
 - **T-040 — Add the D110_M (model id 2320, 203 dpi) and its two round-corner sizes**
   (2026-10-07): a real D110_M connects as "unknown (id 2320)"; `MODEL_IDS` now has it

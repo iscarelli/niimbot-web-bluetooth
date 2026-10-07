@@ -103,7 +103,8 @@
   <details id="rollbox">
     <summary>Rolls <span id="rollcount">(0 saved)</span></summary>
     <p class="muted">Fit a roll, read its tag, type the label's real size in mm, save.
-       The size is remembered against the tag's barcode and restored on the next
+       The millimetres are remembered against the tag's barcode; the pixels come from
+       whichever printer is selected when the roll is restored on the next
        <em>Connect &amp; identify</em>.</p>
     <div class="rollctl">
       <button id="rollread" type="button">Read tag</button>
@@ -111,10 +112,11 @@
     </div>
     <div class="rollform">
       <label>Name <input id="rollname" type="text" placeholder="cable flag"></label>
-      <label>Width mm <input id="rollw" type="number" step="0.1" min="1" inputmode="decimal"></label>
-      <label>Height mm <input id="rollh" type="number" step="0.1" min="1" inputmode="decimal"></label>
+      <label>Width mm (across the head) <input id="rollw" type="number" step="0.1" min="1" inputmode="decimal"></label>
+      <label>Length mm (along the feed) <input id="rollh" type="number" step="0.1" min="1" inputmode="decimal"></label>
       <label>Colour <input id="rollcolor" type="text" placeholder="white"></label>
     </div>
+    <p class="muted">Narrow labels feed standing: a 15 &times; 50 roll is width 15, length 50.</p>
     <div id="rollcalc" class="muted"></div>
     <div class="rollctl">
       <button id="rollsave" type="button">Save roll</button>
@@ -577,31 +579,106 @@
           + `consumablesType is "inferred", so check the roll yourself.`);
       }
 
-      // recall() returns a RECORD ({ size, color, … }) or null — not a bare size id.
+      sessionTagBc = bc;
+
+      // recall() returns a RECORD ({ w_mm, h_mm, color, … }, or legacy { size, … }) or
+      // null — not a bare size id. The roll is remembered in millimetres; sizeForRoll()
+      // turns that into the size id for the CURRENTLY SELECTED printer. Without autoSelect
+      // nothing may be created, so the lookup only reports what already exists.
       const rec = labelMemory.recall(bc);
-      const remembered = rec && rec.size;
+      const mm = rec && rollMm(rec);
+      const mmText = mm ? `${mm.w_mm} × ${mm.h_mm} mm` : null;
       const colour = rec && rec.color ? ` [${rec.color}]` : "";
       const cur = $("size").value;
-      if (!remembered) {
+      if (!rec) {
         console.log(`[label-memory] tag ${bc}: no size remembered — keeping "${cur}". It is learned from the next successful print, or from the Rolls panel.`);
         return bc;
       }
-      if (!Array.prototype.some.call($("size").options, (o) => o.value === remembered)) {
-        console.log(`[label-memory] tag ${bc}: remembered size "${remembered}"${colour} is not offered for the selected model — keeping "${cur}".`);
+      const resolved = sizeForRoll(rec, autoSelect);
+      if (!resolved) {
+        console.log(`[label-memory] tag ${bc}: remembered ${mmText || `size "${rec.size}"`}${colour}, but the selected model has no matching size${autoSelect ? "" : " yet (selecting the roll would create one)"} — keeping "${cur}".`);
         return bc;
       }
       if (!autoSelect) {
-        console.log(`[label-memory] tag ${bc}: remembered size is "${remembered}"${colour} (currently selected: "${cur}").`);
+        console.log(`[label-memory] tag ${bc}: remembered ${mmText || `size "${rec.size}"`}${colour} → "${resolved}" on the selected model (currently selected: "${cur}").`);
         return bc;
       }
-      if (cur !== remembered) {
-        $("size").value = remembered;
+      if (cur !== resolved) {
+        $("size").value = resolved;
         refresh();
       }
-      const s = allSizes()[remembered];
-      console.log(`[label-memory] tag ${bc}: selected "${remembered}"${s ? ` (${s.label})` : ""}${colour} — remembered from a previous print on this roll.`);
+      const s = allSizes()[resolved];
+      console.log(`[label-memory] tag ${bc}: ${mmText ? mmText + " → " : ""}selected "${resolved}"${s ? ` (${s.label})` : ""}${colour} — remembered from a previous print on this roll.`);
       return bc;
     }
+
+    // The roll's physical size: its own w_mm/h_mm, else (legacy record) its size's.
+    function rollMm(rec) {
+      const ok = (v) => typeof v === "number" && isFinite(v) && v > 0;
+      if (ok(rec.w_mm) && ok(rec.h_mm)) return { w_mm: rec.w_mm, h_mm: rec.h_mm };
+      const s = rec.size && allSizes()[rec.size];
+      if (s && ok(s.w_mm) && ok(s.h_mm)) return { w_mm: s.w_mm, h_mm: s.h_mm };
+      return null;
+    }
+
+    // The ONE resolver from a roll to a size id for the CURRENTLY SELECTED model, or null.
+    // A roll is physical and fits any dpi; pixels belong to a printer. With `create` false
+    // (a read-only report) it never writes a custom size and returns null instead.
+    function sizeForRoll(rec, create) {
+      if (create === undefined) create = true;
+      const mk = $("model").value;
+      const model = reg.models[mk];
+      const offered = (id) => Array.prototype.some.call($("size").options, (o) => o.value === id);
+      const mm = rollMm(rec);
+      if (!mm) return rec.size && offered(rec.size) ? rec.size : null;
+      const same = (a, b) => Math.abs(a - b) < 1e-6;
+      const shipped = Object.keys(reg.sizes).filter((k) => {
+        const z = reg.sizes[k];
+        return same(z.w_mm, mm.w_mm) && same(z.h_mm, mm.h_mm) && offered(k);
+      });
+      // b. a size made for exactly this model (it carries the per-model offsets)
+      const own = shipped.find((k) => k.endsWith("_" + mk));
+      if (own) return own;
+      // c. same mm and dpi, not suffixed for a different model. T15x50 has no suffix but
+      // is the D110's — an acceptable fallback, hence the log line.
+      const generic = shipped.find((k) => {
+        const m = k.match(/_([^_]+)$/);
+        return reg.sizes[k].dpi === model.dpi && !(m && reg.models[m[1]] && m[1] !== mk);
+      });
+      if (generic) {
+        console.log(`[rolls] ${mm.w_mm} × ${mm.h_mm} mm on "${mk}": using the shipped "${generic}" (${reg.sizes[generic].dpi} dpi, no size made for this model).`);
+        return generic;
+      }
+      // d. a custom size keyed by MODEL, not dpi: the B1 Pro and the B2 Pro are both
+      // 300 dpi with different heads.
+      const id = `C${mm.w_mm}x${mm.h_mm}_${mk}`.replace(/\./g, "_");
+      if (offered(id)) return id;
+      if (!create) return null;
+      const geom = NiimbotLabelSize.sizeFromMm({
+        w_mm: mm.w_mm, h_mm: mm.h_mm, dpi: model.dpi, printhead_px: PRINTHEAD_PX[mk],
+      });
+      const sizes = customSizes();
+      if (!sizes[id]) {
+        sizes[id] = {
+          label: `${mm.w_mm} × ${mm.h_mm} mm`,
+          w_mm: mm.w_mm, h_mm: mm.h_mm, w_px: geom.w_px, h_px: geom.h_px, dpi: model.dpi,
+          margin: 10,
+        };
+        if (!saveCustomSizes(sizes)) { status("Rolls: could not save the size (storage refused)."); return null; }
+        console.log(`[rolls] created custom size "${id}": ${geom.w_px} × ${geom.h_px} px at ${model.dpi} dpi.`);
+        if (geom.clamped) {
+          console.warn(`[rolls] ⚠ "${id}": width clamped from ${geom.label_px} px to the ${mk} printhead (${geom.w_px} px) — the label's outer edge will not print.`);
+        }
+      }
+      populateSizes();
+      return offered(id) ? id : null;
+    }
+
+    // A changed model means the same roll needs that printer's pixels: re-resolve it.
+    let sessionTagBc = null;       // barcode of the last tag read or reviewed this session
+    $("model").addEventListener("change", () => {
+      if (sessionTagBc) reviewTag({ decoded: { rfid: { tagPresent: true, barCode: sessionTagBc } } }, true);
+    });
     // Exposed for the same reason as labelMemory: with a hand-made getStatus()
     // result — reviewTag({ decoded: { rfid: { tagPresent: true, barCode: "X",
     // consumablesType: 1 } } }, true) — the auto-select path can be exercised from
@@ -670,7 +747,7 @@
     function showCalc() {
       const g = currentGeom();
       if (!g) { $("rollcalc").textContent = "enter width and height in mm"; return; }
-      $("rollcalc").textContent = `${g.w_px} × ${g.h_px} px, stride ${g.stride}`;
+      $("rollcalc").textContent = `On ${$("model").selectedOptions[0].text}: ${g.w_px} × ${g.h_px} px, stride ${g.stride}`;
       if (g.clamped) {
         const lost = ((g.label_px - g.w_px) / (reg.models[$("model").value].dpi / 25.4)).toFixed(1);
         const span = document.createElement("span");
@@ -685,11 +762,6 @@
     $("model").addEventListener("change", showCalc);
     showCalc();
 
-    // A size is geometry, so its id is derived from geometry: two rolls of the same
-    // dimensions on the same dpi ARE the same size, whatever they are called or
-    // coloured. Name and colour are per-roll and live in the barcode record instead.
-    const sizeIdFor = (w, h, dpi) => `C${w}x${h}_${dpi}`.replace(/\./g, "_");
-
     function renderRolls() {
       const rolls = labelMemory.all();
       const custom = customSizes();
@@ -698,7 +770,8 @@
       $("rolllist").innerHTML = "";
       for (const bc of keys) {
         const r = rolls[bc];
-        const s = allSizes()[r.size];
+        // Millimetres, never dpi or px: those belong to a printer, not to the roll.
+        const mm = rollMm(r);
         const row = document.createElement("div");
         row.className = "rollrow";
         // Built with DOM APIs, never innerHTML. `bc`, `name`, `color` and the size
@@ -711,10 +784,11 @@
         code.textContent = bc;
         txt.appendChild(code);
         txt.appendChild(document.createTextNode(
-          " → " + (r.name ? r.name + " · " : "") + (s ? s.label : r.size)
+          " → " + (r.name ? r.name + " · " : "")
+          + (mm ? `${mm.w_mm} × ${mm.h_mm} mm` : r.size)
           + (r.color ? " · " + r.color : "")
         ));
-        if (!s) {
+        if (!mm) {
           const w = document.createElement("span");
           w.className = "warn";
           w.textContent = " (size not defined here)";
@@ -768,6 +842,7 @@
           return;
         }
         lastTag = rfid;
+        sessionTagBc = rfid.barCode;
         $("rolltag").textContent = `${rfid.barCode} · serial ${rfid.serialNumber || "?"} · ${rfid.capacity != null ? rfid.capacity + " labels" : "capacity ?"}`;
         console.log(`[rolls] tag ${rfid.barCode} read (serial ${rfid.serialNumber || "?"}).`);
         // Pre-fill from what is already known about this roll, so re-saving does not
@@ -776,9 +851,9 @@
         if (known) {
           if (known.name) $("rollname").value = known.name;
           if (known.color) $("rollcolor").value = known.color;
-          const s = allSizes()[known.size];
-          if (s && s.w_mm && s.h_mm) { $("rollw").value = s.w_mm; $("rollh").value = s.h_mm; showCalc(); }
-          console.log(`[rolls] already known as "${known.size}"${known.color ? " (" + known.color + ")" : ""}.`);
+          const kmm = rollMm(known);
+          if (kmm) { $("rollw").value = kmm.w_mm; $("rollh").value = kmm.h_mm; showCalc(); }
+          console.log(`[rolls] already known as ${kmm ? kmm.w_mm + " × " + kmm.h_mm + " mm" : `"${known.size}"`}${known.color ? " (" + known.color + ")" : ""}.`);
         }
       } catch (e) {
         lastTag = null;
@@ -791,52 +866,30 @@
 
     $("rollsave").addEventListener("click", () => {
       const w = rollNum("rollw"), h = rollNum("rollh");
-      const geom = currentGeom();
-      if (!geom) { status("Rolls: enter a width and height in mm first."); return; }
-      const dpi = reg.models[$("model").value].dpi;
+      if (!w || !h) { status("Rolls: enter a width and height in mm first."); return; }
       const name = $("rollname").value.trim();
       const colour = $("rollcolor").value.trim();
 
-      // If a SHIPPED size already has these exact pixels at this dpi, use it instead of
-      // saving a second name for the same geometry. Duplicates are not wrong — they
-      // print identically — but they show up twice in the picker, one starred and one
-      // not, and the pair drifts the moment the shipped one is corrected: the copy keeps
-      // the old pixels and looks equally official. Measured case: four rolls registered
-      // by hand produced C50x30_300, C25x38_300 and C30x45_300, all three byte-identical
-      // to T50x30, T25x38 and T30x45. Geometry is the identity here, not the name.
-      const shipped = Object.keys(reg.sizes).find((k) => {
-        const s = reg.sizes[k];
-        return s.dpi === dpi && s.w_px === geom.w_px && s.h_px === geom.h_px;
-      });
-      const id = shipped || sizeIdFor(w, h, dpi);
-      if (shipped) {
-        console.log(`[rolls] ${w} × ${h} mm at ${dpi} dpi is exactly the shipped `
-          + `"${shipped}" (${geom.w_px} × ${geom.h_px} px) — linking the roll to it `
-          + `instead of saving a duplicate size.`);
-      }
-
-      // The size: shared geometry, stored beside the registry (never merged into it).
-      const sizes = customSizes();
-      if (!shipped && !reg.sizes[id]) {
-        sizes[id] = {
-          label: (name ? name + " — " : "") + `${w} × ${h} mm`,
-          w_mm: w, h_mm: h, w_px: geom.w_px, h_px: geom.h_px, dpi: dpi,
-          margin: 10,
-        };
-        if (!saveCustomSizes(sizes)) { status("Rolls: could not save the size (storage refused)."); return; }
-      }
-      populateSizes();
+      // The roll is its physical size: w across the head, h along the feed. The pixels
+      // are derived per printer by sizeForRoll(), so a roll saved on the B1 Pro does not
+      // carry 300 dpi onto a D110_M.
+      const rec = { w_mm: w, h_mm: h };
+      if (name) rec.name = name;
+      if (colour) rec.color = colour;
+      const id = sizeForRoll(rec);
+      if (!id) { status("Rolls: could not find or create a size for this printer."); return; }
       $("size").value = id;
       refresh();
 
       // The roll: name and colour hang off the barcode, not off the geometry.
       if (lastTag && lastTag.barCode) {
         const prev = labelMemory.recall(lastTag.barCode) || {};
-        const rec = Object.assign({}, prev, { size: id });
-        if (name) rec.name = name; else delete rec.name;
-        if (colour) rec.color = colour; else delete rec.color;
-        if (labelMemory.remember(lastTag.barCode, rec)) {
-          console.log(`[rolls] saved tag ${lastTag.barCode} → "${id}"${colour ? " (" + colour + ")" : ""}.`);
+        const out = Object.assign({}, prev, rec);
+        delete out.size;
+        if (!name) delete out.name;
+        if (!colour) delete out.color;
+        if (labelMemory.remember(lastTag.barCode, out)) {
+          console.log(`[rolls] saved tag ${lastTag.barCode} → ${w} × ${h} mm (size "${id}")${colour ? " (" + colour + ")" : ""}.`);
           status(`Rolls: saved ${lastTag.barCode} → ${w} × ${h} mm${colour ? " (" + colour + ")" : ""}.`);
         } else {
           status("Rolls: the size was saved but the roll record was not (storage refused).");
@@ -844,7 +897,7 @@
       } else {
         // Saving a size with no tag read is legitimate — you may be defining a size
         // before the roll is fitted — but it must not look like a roll was registered.
-        console.log(`[rolls] size "${id}" saved, but NO tag was read, so no barcode was linked.`);
+        console.log(`[rolls] size "${id}" selected, but NO tag was read, so no barcode was linked.`);
         status(`Rolls: size ${w} × ${h} mm saved and selected. No tag read — press "Read tag" with the roll fitted to link it.`);
       }
       renderRolls();
@@ -929,9 +982,13 @@
         for (const [bc, r] of Object.entries(data.rolls)) {
           const rec = typeof r === "string" ? { size: r } : r;
           if (!KEY_RE.test(bc) || !rec || typeof rec !== "object") { skipped++; continue; }
+          // A roll is its millimetres (w_mm, h_mm); a legacy roll names a size instead.
+          const wmm = num(rec.w_mm, 2000), hmm = num(rec.h_mm, 2000);
           const size = text(rec.size, 64);
-          if (!size || !KEY_RE.test(size)) { skipped++; continue; }
-          const out = { size: size };
+          let out;
+          if (wmm && hmm) out = { w_mm: wmm, h_mm: hmm };
+          else if (size && KEY_RE.test(size)) out = { size: size };
+          else { skipped++; continue; }
           const nm = text(rec.name, 64); if (nm) out.name = nm;
           const cl = text(rec.color, 32); if (cl) out.color = cl;
           cleanRolls[bc] = out;
@@ -960,13 +1017,19 @@
         const rfid = st && st.decoded && st.decoded.rfid;
         if (!rfid || !rfid.tagPresent || !rfid.barCode) return;
         // MERGE, never replace: the record may carry a colour and a name entered in the
-        // Rolls panel, and printing must not quietly wipe them. Only `size` is learned
-        // here, because only `size` is what the user just demonstrated on paper.
+        // Rolls panel, and printing must not quietly wipe them. Only the label's size is
+        // learned here, because only that is what the user just demonstrated on paper —
+        // and as millimetres, so the roll still fits another printer. A size with no mm
+        // falls back to remembering the size id.
         const prev = labelMemory.recall(rfid.barCode);
-        if (prev && prev.size === sizeId) {
-          console.log(`[label-memory] tag ${rfid.barCode} already remembered as "${sizeId}".`);
-        } else if (labelMemory.remember(rfid.barCode, Object.assign({}, prev, { size: sizeId }))) {
-          console.log(`[label-memory] remembered tag ${rfid.barCode} → "${sizeId}".`);
+        const sz = allSizes()[sizeId];
+        const learned = sz && sz.w_mm > 0 && sz.h_mm > 0 ? { w_mm: sz.w_mm, h_mm: sz.h_mm } : { size: sizeId };
+        const next = Object.assign({}, prev, learned);
+        if (learned.w_mm) delete next.size; else { delete next.w_mm; delete next.h_mm; }
+        if (prev && JSON.stringify(prev) === JSON.stringify(next)) {
+          console.log(`[label-memory] tag ${rfid.barCode} already remembered as ${learned.w_mm ? learned.w_mm + " × " + learned.h_mm + " mm" : `"${sizeId}"`}.`);
+        } else if (labelMemory.remember(rfid.barCode, next)) {
+          console.log(`[label-memory] remembered tag ${rfid.barCode} → ${learned.w_mm ? learned.w_mm + " × " + learned.h_mm + " mm" : `"${sizeId}"`}.`);
           renderRolls();
         }
       } catch (e) {

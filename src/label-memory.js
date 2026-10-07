@@ -30,19 +30,27 @@
   // data the tag does not carry, and a string has nowhere to put it. Older data IS a
   // bare string, so it is normalised on READ and never rewritten in bulk — a
   // migrate-everything pass can only lose more than it fixes.
+  //
+  // A record is usable when it names a size (`size`, the legacy shape) OR carries the
+  // label's physical dimensions (`w_mm` and `h_mm`, both finite numbers > 0). Millimetres
+  // are the roll's own identity; a size id is one printer's pixels. The module does not
+  // interpret either — it only decides whether the record is worth keeping.
+  function usable(v) {
+    if (!v || typeof v !== "object" || Array.isArray(v)) return false;
+    if (typeof v.size === "string" && v.size) return true;
+    return typeof v.w_mm === "number" && isFinite(v.w_mm) && v.w_mm > 0
+        && typeof v.h_mm === "number" && isFinite(v.h_mm) && v.h_mm > 0;
+  }
+
   function normalize(v) {
     if (typeof v === "string") return v ? { size: v } : null;
-    if (v && typeof v === "object" && !Array.isArray(v) && typeof v.size === "string" && v.size) return v;
-    return null;
+    return usable(v) ? v : null;
   }
 
   // `remember(bc, "T50x30")` stays valid as shorthand for `{ size: "T50x30" }`.
   function toRecord(v) {
     if (typeof v === "string") return v ? { size: v } : null;
-    if (v && typeof v === "object" && !Array.isArray(v) && typeof v.size === "string" && v.size) {
-      return Object.assign({}, v);        // copy: the caller's object must not alias ours
-    }
-    return null;
+    return usable(v) ? Object.assign({}, v) : null;   // copy: the caller's object must not alias ours
   }
 
   function defaultStorage(root) {
@@ -104,7 +112,8 @@
         return out;
       },
 
-      // → record object, or null. NOT a size id: callers must read `.size`.
+      // → record object, or null. NOT a size id: read `.w_mm`/`.h_mm`, or `.size` on a
+      // legacy record (either may be absent).
       recall: function (barCode) {
         if (!barCode) return null;
         return normalize(readMap()[barCode]);
@@ -158,5 +167,5 @@
     return api;
   }
 
-  root.NiimbotLabelMemory = { create: create, VERSION: "1.0.0" };
+  root.NiimbotLabelMemory = { create: create, VERSION: "1.1.0" };
 })(typeof window !== "undefined" ? window : globalThis);

@@ -1,4 +1,4 @@
-/* Harness: NiimbotLabelMemory — barcode → { size, colour, … } storage.
+/* Harness: NiimbotLabelMemory — barcode → { w_mm, h_mm, colour, … } (or legacy { size }) storage.
  *
  * No dependencies, no runner: `node test/label-memory.test.js`. Exits non-zero on
  * failure. NO PRINTER AND NO BROWSER: storage is injected, which is the reason the
@@ -142,6 +142,42 @@ ok("(h) a record without a usable `size` is refused rather than stored", () => {
   assert.equal(mem.remember("111", ""), false);
   assert.equal(mem.remember("", { size: "T50x30" }), false);
   assert.equal(mem.recall("111"), null);
+});
+
+ok("(i) an mm-only record round-trips via remember / recall / seed / all", () => {
+  const mem = create({ key: "k", storage: fakeStorage() });
+  assert.equal(mem.remember("111", { w_mm: 15, h_mm: 50, name: "flag", color: "white" }), true);
+  assert.deepEqual(mem.recall("111"), { w_mm: 15, h_mm: 50, name: "flag", color: "white" });
+  assert.equal(mem.seed({ "222": { w_mm: 30.5, h_mm: 45 }, "111": { w_mm: 1, h_mm: 1 } }), 1,
+    "seed fills the gap only");
+  assert.deepEqual(mem.recall("222"), { w_mm: 30.5, h_mm: 45 });
+  assert.deepEqual(mem.recall("111").w_mm, 15, "seeded value did not overwrite");
+  assert.deepEqual(Object.keys(mem.all()).sort(), ["111", "222"]);
+  assert.equal(mem.seed({ "333": { w_mm: 0, h_mm: 5 } }), 0);
+});
+
+ok("(j) an mm record with w_mm 0, a missing h_mm or NaN is rejected", () => {
+  const mem = create({ key: "k", storage: fakeStorage() });
+  assert.equal(mem.remember("111", { w_mm: 0, h_mm: 50 }), false);
+  assert.equal(mem.remember("111", { w_mm: 15 }), false);
+  assert.equal(mem.remember("111", { h_mm: 50 }), false);
+  assert.equal(mem.remember("111", { w_mm: NaN, h_mm: 50 }), false);
+  assert.equal(mem.remember("111", { w_mm: 15, h_mm: Infinity }), false);
+  assert.equal(mem.remember("111", { w_mm: "15", h_mm: "50" }), false);
+  assert.equal(mem.remember("111", { w_mm: -1, h_mm: 50 }), false);
+  assert.equal(mem.recall("111"), null);
+});
+
+ok("(k) legacy string and { size } still work next to mm records; a stored mm record reads back", () => {
+  const store = fakeStorage({ k: '{"1":"T50x30","2":{"size":"T30x45"},"3":{"w_mm":15,"h_mm":50},"4":{"w_mm":0,"h_mm":5}}' });
+  const mem = create({ key: "k", storage: store });
+  assert.deepEqual(mem.recall("1"), { size: "T50x30" });
+  assert.deepEqual(mem.recall("2"), { size: "T30x45" });
+  assert.deepEqual(mem.recall("3"), { w_mm: 15, h_mm: 50 });
+  assert.equal(mem.recall("4"), null, "an unusable stored record is dropped on read");
+  assert.equal(mem.remember("5", "T25x38"), true);
+  assert.deepEqual(mem.recall("5"), { size: "T25x38" });
+  assert.equal(globalThis.NiimbotLabelMemory.VERSION, "1.1.0");
 });
 
 console.log(failures

@@ -486,9 +486,10 @@ panel — capturing those next to what the printer physically shows (lid, paper,
 exactly how the confirmed fields got confirmed, and how the rest still can be.
 
 A **Rolls** panel (collapsed by default) registers a consumable without a console: press
-*Read tag* with the roll fitted, type the label's real size in mm and its colour, and
-save. The computed pixels appear live, and a width clamped to the printhead says so and
-how many mm will not print. Custom sizes are kept **beside** `registry.json`, never
+*Read tag* with the roll fitted, type the label's real size in mm (width across the head,
+length along the feed) and its colour, and save. A roll is remembered as millimetres, not
+pixels, so it fits any printer: the pixels for the selected printer appear live, and a
+width clamped to the printhead says so and how many mm will not print. Custom sizes are kept **beside** `registry.json`, never
 merged into it. *Copy JSON* puts sizes and rolls on the clipboard — `localStorage` is per
 browser and per origin, so what you register on the phone is invisible on the desktop —
 and if the clipboard refuses, it says so and shows the JSON to copy by hand.
@@ -534,22 +535,23 @@ const mem = NiimbotLabelMemory.create({ key: "my-app:size-by-barcode" });
 const st = await Niimbot.getStatus();               // never let this break connecting
 const rfid = st && st.decoded && st.decoded.rfid;   // may be null: no tag, or a model
                                                     // that never answers RfidInfo
-const rec = rfid && rfid.tagPresent && mem.recall(rfid.barCode);   // → { size, color, … }
-if (rec) selectSize(rec.size);
+const rec = rfid && rfid.tagPresent && mem.recall(rfid.barCode);   // → { w_mm, h_mm, color, … }
+if (rec) selectSizeFor(rec.w_mm, rec.h_mm);   // your own mm → size lookup
 
 // After a print SUCCEEDS: learn from what the user did. Merge, so a colour or name
 // entered elsewhere is not wiped by printing.
-mem.remember(rfid.barCode, { ...mem.recall(rfid.barCode), size: selectedSizeId });
+mem.remember(rfid.barCode, { ...mem.recall(rfid.barCode), w_mm: 15, h_mm: 50 });
 
 // Bulk-load rolls you already know. Fills gaps ONLY: hand-typed must not overwrite what
 // a real print taught. `{ overwrite: true }` is there for the deliberate reset.
-mem.seed({ "6975746632324": { size: "T30x45", color: "white" } });
+mem.seed({ "6975746632324": { w_mm: 30, h_mm: 45, color: "white" } });
 ```
 
-`recall()` returns a **record**, not a size id — the tag carries no colour, so colour
-lives here alongside the size, and any extra key your app writes survives untouched. A
-value stored as a bare string by an older version reads back as `{ size }`; nothing is
-rewritten in bulk.
+`recall()` returns a **record**, not a size id: `{ w_mm, h_mm, name?, color? }`, the label's
+physical size (`w_mm` across the printhead, `h_mm` along the feed) — a roll fits any dpi,
+so pixels stay your app's job. A record needs both numbers > 0 or it is refused. The
+legacy `{ size }` record, and a bare string from an older version, are still read as
+before; nothing is rewritten in bulk. Any extra key your app writes survives untouched.
 
 `NiimbotLabelSize.sizeFromMm({ w_mm, h_mm, dpi, printhead_px })` turns a measurement into
 the `w_px`/`h_px`/`stride` a size entry needs, clamping the width to the printhead and
