@@ -911,8 +911,20 @@
     return { raw, scale: "unknown", percent: null, text: `unknown (raw ${raw}, printer not identified)`, evidence };
   }
 
+  // Only data:/blob:/http(s): URLs are legitimate image sources for printImage()
+  // (canvas.toDataURL, object URLs, remote PNGs). Rejecting everything else blocks
+  // file:// and other schemes an attacker-supplied url could otherwise use to reach
+  // local files or internal/metadata endpoints via fetch().
+  const SAFE_IMAGE_URL_SCHEMES = new Set(["data:", "blob:", "http:", "https:"]);
+  function assertSafeImageUrl(url) {
+    let scheme;
+    try { scheme = new URL(url, document.baseURI).protocol; } catch (e) { throw new Error(`Invalid image URL: ${url}`); }
+    if (!SAFE_IMAGE_URL_SCHEMES.has(scheme)) throw new Error(`Unsupported image URL scheme: ${scheme}`);
+  }
+
   // ── Bitmap: image → rows packed MSB-first (1 = black) ───────────────────────
   async function imageToPacked(url, w, h, offsetY) {
+    assertSafeImageUrl(url);
     const dy = offsetY | 0;   // print-position calibration (paper registration, not scale — w/h stay put); dy > 0 shifts down, dy < 0 shifts up
     const bmp = await fetch(url).then((r) => r.blob()).then((b) => createImageBitmap(b));
     const canvas = document.createElement("canvas");
