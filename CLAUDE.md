@@ -32,7 +32,10 @@ node test/battery.test.js       # battery() percent/enum/contradiction decode ha
 node test/dispatch.test.js      # notification dispatcher's waiter queue (T-035) (no printer)
 node test/bundle.test.js        # BUNDLE override: write count/size vs. per-model default (T-037) (no printer)
 node test/rows-received.test.js # 0xD3 row-received counter catches a truncated PageEnd-acked page (T-038) (no printer)
+node test/bluetooth-unsupported.test.js  # connect()'s no-Web-Bluetooth error message (no printer)
 ```
+
+`.github/workflows/ci.yml` runs every `test/*.test.js` plus the syntax check on each push to `main` and each PR.
 
 The demo's inline `<script>` cannot be checked by `node --check`. To parse it, extract
 the non-`src` script blocks and check each — that is a syntax gate, not a functional one,

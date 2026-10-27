@@ -1,0 +1,49 @@
+name: CI
+
+# Runs the syntax check and every no-printer harness in test/ on each push to
+# main and on each pull request. It needs no printer, no browser and no
+# dependencies (the project has none).
+#
+# A green run says NOTHING about printing: the harnesses stub the browser and
+# the printer. A print that reports success is not a print — see CLAUDE.md,
+# "The verification that matters is physical". Hardware confirmation stays
+# the maintainer's step.
+#
+# The harness list is the glob test/*.test.js, so a new harness is picked up
+# without editing this file. test/bringup.mjs and test/bench-battery.html need
+# hardware or a browser and are excluded by that glob.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+
+      - name: Syntax
+        run: node --check src/niimbot.js
+
+      - name: Harnesses
+        shell: bash
+        run: |
+          fail=0
+          n=0
+          for f in test/*.test.js; do
+            [ -e "$f" ] || continue
+            n=$((n+1))
+            echo "=== $f"
+            node "$f" || { echo "FAILED: $f"; fail=1; }
+          done
+          if [ "$n" -eq 0 ]; then echo "no harnesses matched test/*.test.js"; exit 1; fi
+          exit $fail

@@ -5,6 +5,11 @@ All notable changes to this project are documented here. The format is based on
 [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
+### Internal
+- **T-042 — Run the no-printer harnesses in CI on every push and PR** (2026-10-26):
+  `.github/workflows/ci.yml` runs `node --check src/niimbot.js` and every
+  `test/*.test.js` on each push to `main` and each pull request. Not shipped to npm.
+  A green run says nothing about printing; hardware confirmation is still manual.
 ### Changed
 - **T-041 — A roll remembers its millimetres; the pixels come from the connected printer**
   (2026-10-07): the demo stored a roll as the pixel size of one model (a roll registered
