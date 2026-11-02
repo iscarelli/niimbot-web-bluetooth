@@ -33,6 +33,7 @@ node test/dispatch.test.js      # notification dispatcher's waiter queue (T-035)
 node test/bundle.test.js        # BUNDLE override: write count/size vs. per-model default (T-037) (no printer)
 node test/rows-received.test.js # 0xD3 row-received counter catches a truncated PageEnd-acked page (T-038) (no printer)
 node test/bluetooth-unsupported.test.js  # connect()'s no-Web-Bluetooth error message (no printer)
+node test/instances.test.js     # Niimbot.create(): two instances, separate connections and waiters (T-043) (no printer)
 ```
 
 `.github/workflows/ci.yml` runs every `test/*.test.js` plus the syntax check on each push to `main` and each PR.
