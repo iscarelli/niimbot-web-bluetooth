@@ -81,13 +81,24 @@
   // the few lines that answer "how did this print go out?".
   function logAlways(m) { flushImg(); console.log(`[niimbot] ·  ${m}`); }
 
+  // ── One driver instance per printer ─────────────────────────────────────────
+  // Everything from here to the end of the file is per-CONNECTION state and the code
+  // that drives it (device, characteristic, waiter queue, detected model, write/bundle
+  // settings, page counters), so it lives inside createInstance(): each call is an
+  // independent driver, which is what lets one page run a B1 and a D11 at once. The
+  // body is deliberately NOT re-indented (a 1400-line whitespace diff would bury the
+  // change). Above this line stays shared: constants, the log helpers, and DEBUG (one
+  // switch for all instances). `Niimbot` itself is the default instance, so every
+  // pre-existing caller is unaffected.
+  function createInstance() {
+
   // Timing trace for batch diagnostics (concise: a few lines per batch), gated behind
   // DEBUG. Reveals whether an inter-label gap is us sending the next page late or the
   // printer idling after a page. Times are ms since the batch began.
   let _t0 = 0;
   function tlog(m) { if (DEBUG) console.log(`[niimbot t+${String(Date.now() - _t0).padStart(5)}ms] ${m}`); }
 
-  // Connection reused across prints (module singleton).
+  // Connection reused across prints (one per driver instance — see createInstance).
   let device = null;
   let characteristic = null;
   // Waiters registered by sendWait()/getPrintStatus(), in registration order. Each
@@ -1418,7 +1429,7 @@
     onProgress && onProgress("ok");
   }
 
-  root.Niimbot = {
+  return {
     VERSION, SVC_UUID, CHAR_UUID,
     get DEBUG() { return DEBUG; }, set DEBUG(v) { DEBUG = !!v; },
     get BUNDLE_MAX() { return BUNDLE_MAX; }, set BUNDLE_MAX(v) { BUNDLE_MAX = Math.max(0, v | 0); },
@@ -1510,4 +1521,11 @@
     battery,
     connect, disconnect, printImage, printBatch,
   };
+  } // createInstance
+
+  // The global is the default instance plus the factory. `create()` returns a fresh,
+  // fully independent driver (own connection, own settings) for a second printer.
+  const Niimbot = createInstance();
+  Niimbot.create = createInstance;
+  root.Niimbot = Niimbot;
 })(typeof window !== "undefined" ? window : globalThis);

@@ -396,6 +396,27 @@ connecting — if the model's `task`/`dpi` does not match the printer that answe
   or `"acked"` one, since a boolean cannot express "not paced, but keep that". Prefer
   `WRITE_MODE`.
 
+### Two printers on one page
+
+`Niimbot` is a ready-made driver instance for one printer. For a second printer at the
+same time, make another with `Niimbot.create()` — each instance has its own connection,
+detected model and settings (`PACE_MS`, `WRITE_MODE`, `BUNDLE`, …), and the same API:
+
+```js
+const b1 = Niimbot.create();
+const d11 = Niimbot.create();
+await b1.connect(b1Model);    // the browser asks you to pick the B1
+await d11.connect(d11Model);  // …then the D11
+await Promise.all([
+  b1.printImage(url1, { model: b1Model, size: b1Size }),
+  d11.printImage(url2, { model: d11Model, size: d11Size }),
+]);
+```
+
+Only `DEBUG` is shared: it is one switch for all instances. Code that uses the global
+`Niimbot` keeps working unchanged. Two printers printing at the same time has not been
+confirmed on hardware.
+
 ## Requirements
 
 Any browser with **Web Bluetooth**, over **HTTPS** or `localhost`. Firefox has no

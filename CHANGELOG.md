@@ -21,6 +21,13 @@ All notable changes to this project are documented here. The format is based on
   (additive; legacy `{ size }` still read). Rolls saved lying down (e.g. a 15 mm roll
   as 50 × 15) must be forgotten and re-saved. No print path changed.
 ### Added
+- **T-043 — Several printers per page: one driver instance per printer** (2026-11-02):
+  `Niimbot.create()` returns an independent driver (own connection, waiter queue, detected
+  model, `PACE_MS`/`WRITE_MODE`/`BUNDLE`/page-wait settings) with the same API as `Niimbot`,
+  so one page can drive a B1 and a D11 at once. The global `Niimbot` is now the default
+  instance plus `create`; single-printer callers are unchanged. `DEBUG` stays one shared
+  switch. New harness `test/instances.test.js`. Verified without printers only —
+  two printers printing simultaneously is outstanding on hardware.
 - **T-040 — Add the D110_M (model id 2320, 203 dpi) and its two round-corner sizes**
   (2026-10-07): a real D110_M connects as "unknown (id 2320)"; `MODEL_IDS` now has it
   (task `v4`, 203 dpi, `pagesPerJob: 1`), `registry.json` has `d110m` plus `T15x50_d110m`
